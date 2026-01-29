@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Absorption in Host Material</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>Photon Absorption Visualization</strong><br>
+        White spheres: Host material atoms<br>
+        Blue streams: Photons<br>
+        Red flashes: Absorption events<br>
+        <span id="stats">Photons: 0 | Absorbed: 0 | ds: 0.00</span>
+    </div>
+    <div id="controls">
+        <button onclick="toggleAnimation()">Pause/Resume</button>
+        <button onclick="resetSimulation()">Reset</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let hostAtoms = [];
+        let photons = [];
+        let absorptionFlashes = [];
+        let animationRunning = true;
+        let photonCount = 0;
+        let absorbedCount = 0;
+        let totalDistanceTraveled = 0;
+
+        // Material box dimensions
+        const boxSize = { x: 8, y: 6, z: 4 };
+        const numAtoms = 100;
+        const absorptionProbability = 0.3;
+        const photonSpeed = 0.05;
+        const spawnRate = 3; // photons per frame
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a15);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(12, 8, 12);
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 1);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0xffffff, 0.8);
+            pointLight1.position.set(10, 10, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x6699ff, 0.5);
+            pointLight2.position.set(-10, -10, -10);
+            scene.add(pointLight2);
+
+            // Create bounding box wireframe
+            const boxGeometry = new THREE.BoxGeometry(boxSize.x, boxSize.y, boxSize.z);
+            const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+            const boxLine = new THREE.LineSegments(
+                boxEdges,
+                new THREE.LineBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.8, linewidth: 2 })
+            );
+            scene.add(boxLine);
+
+            // Create host atoms (white spheres)
+            const atomGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+            const atomMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xffffff,
+                emissive: 0x333333,
+                shininess: 30
+            });
+
+            for (let i = 0; i < numAtoms; i++) {
+                const atom = new THREE.Mesh(atomGeometry, atomMaterial);
+                atom.position.x = (Math.random() - 0.5) * boxSize.x;
+                atom.position.y = (Math.random() - 0.5) * boxSize.y;
+                atom.position.z = (Math.random() - 0.5) * boxSize.z;
+                scene.add(atom);
+                hostAtoms.push(atom);
+            }
+
+            // Window resize handler
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createPhoton() {
+            // Use single consistent blue color for incident photons
+            const incidentBlue = 0x3366ff;
+            
+            const photonGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+            const photonMaterial = new THREE.MeshBasicMaterial({ 
+                color: incidentBlue,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            
+            // Start position: outside the box, random y and z
+            photon.position.x = -boxSize.x / 2 - 3;
+            photon.position.y = (Math.random() - 0.5) * boxSize.y * 0.8;
+            photon.position.z = (Math.random() - 0.5) * boxSize.z * 0.8;
+            
+            // Create a trail effect
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailMaterial = new THREE.LineBasicMaterial({ 
+                color: incidentBlue,
+                transparent: true,
+                opacity: 0.4
+            });
+            const trail = new THREE.Line(trailGeometry, trailMaterial);
+            
+            photon.userData = {
+                velocity: new THREE.Vector3(photonSpeed, 0, 0),
+                absorbed: false,
+                trail: trail,
+                trailPositions: [],
+                color: incidentBlue,
+                enteredBox: false,
+                entryPosition: null,
+                distanceTraveled: 0
+            };
+            
+            scene.add(photon);
+            scene.add(trail);
+            photons.push(photon);
+            photonCount++;
+        }
+
+        function createAbsorptionFlash(position) {
+            const flashGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const flashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff3333,
+                transparent: true,
+                opacity: 1.0
+            });
+            
+            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+            flash.position.copy(position);
+            flash.userData = { life: 1.0 };
+            
+            scene.add(flash);
+            absorptionFlashes.push(flash);
+            absorbedCount++;
+        }
+
+        function checkCollision(photon) {
+            for (let atom of hostAtoms) {
+                const distance = photon.position.distanceTo(atom.position);
+                if (distance < 0.25) { // collision threshold
+                    if (Math.random() < absorptionProbability) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function updatePhotons() {
+            for (let i = photons.length - 1; i >= 0; i--) {
+                const photon = photons[i];
+                
+                if (photon.userData.absorbed) continue;
+                
+                // Store previous position
+                const prevPosition = photon.position.clone();
+                
+                // Move photon
+                photon.position.add(photon.userData.velocity);
+                
+                // Check if photon just entered the box
+                const insideBox = photon.position.x > -boxSize.x / 2 && 
+                                  photon.position.x < boxSize.x / 2 &&
+                                  Math.abs(photon.position.y) < boxSize.y / 2 &&
+                                  Math.abs(photon.position.z) < boxSize.z / 2;
+                
+                if (insideBox && !photon.userData.enteredBox) {
+                    photon.userData.enteredBox = true;
+                    photon.userData.entryPosition = prevPosition.clone();
+                }
+                
+                // Track distance traveled inside the box
+                if (photon.userData.enteredBox && insideBox) {
+                    photon.userData.distanceTraveled += photon.position.distanceTo(prevPosition);
+                }
+                
+                // Update trail
+                photon.userData.trailPositions.push(photon.position.clone());
+                if (photon.userData.trailPositions.length > 15) {
+                    photon.userData.trailPositions.shift();
+                }
+                
+                const positions = new Float32Array(photon.userData.trailPositions.length * 3);
+                for (let j = 0; j < photon.userData.trailPositions.length; j++) {
+                    positions[j * 3] = photon.userData.trailPositions[j].x;
+                    positions[j * 3 + 1] = photon.userData.trailPositions[j].y;
+                    positions[j * 3 + 2] = photon.userData.trailPositions[j].z;
+                }
+                photon.userData.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                // Check if inside box and check for collision
+                if (insideBox) {
+                    if (checkCollision(photon)) {
+                        createAbsorptionFlash(photon.position);
+                        totalDistanceTraveled += photon.userData.distanceTraveled;
+                        photon.userData.absorbed = true;
+                        photon.visible = false;
+                        photon.userData.trail.visible = false;
+                    }
+                }
+                
+                // Remove photon if it's gone too far
+                if (photon.position.x > boxSize.x / 2 + 5 || photon.userData.absorbed) {
+                    scene.remove(photon);
+                    scene.remove(photon.userData.trail);
+                    photons.splice(i, 1);
+                }
+            }
+        }
+
+        function updateAbsorptionFlashes() {
+            for (let i = absorptionFlashes.length - 1; i >= 0; i--) {
+                const flash = absorptionFlashes[i];
+                flash.userData.life -= 0.05;
+                flash.material.opacity = flash.userData.life;
+                flash.scale.set(1 + (1 - flash.userData.life), 1 + (1 - flash.userData.life), 1 + (1 - flash.userData.life));
+                
+                if (flash.userData.life <= 0) {
+                    scene.remove(flash);
+                    absorptionFlashes.splice(i, 1);
+                }
+            }
+        }
+
+        function updateStats() {
+            const averageDistance = absorbedCount > 0 ? (totalDistanceTraveled / absorbedCount) : 0;
+            document.getElementById('stats').textContent = 
+                `Photons: ${photons.length} | Absorbed: ${absorbedCount} | ds: ${averageDistance.toFixed(2)}`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animationRunning) {
+                // Spawn new photons
+                if (Math.random() < 0.3) {
+                    for (let i = 0; i < spawnRate; i++) {
+                        if (Math.random() < 0.7) createPhoton();
+                    }
+                }
+                
+                updatePhotons();
+                updateAbsorptionFlashes();
+                updateStats();
+                
+                // Rotate camera slightly for better view
+                const time = Date.now() * 0.0001;
+                camera.position.x = Math.cos(time) * 12;
+                camera.position.z = Math.sin(time) * 12;
+                camera.lookAt(0, 0, 0);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+
+        function resetSimulation() {
+            // Remove all photons
+            photons.forEach(photon => {
+                scene.remove(photon);
+                scene.remove(photon.userData.trail);
+            });
+            photons = [];
+            
+            // Remove all flashes
+            absorptionFlashes.forEach(flash => scene.remove(flash));
+            absorptionFlashes = [];
+            
+            photonCount = 0;
+            absorbedCount = 0;
+            totalDistanceTraveled = 0;
+            updateStats();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

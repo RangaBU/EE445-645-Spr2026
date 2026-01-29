@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Differential Scattering Coefficient Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            max-width: 400px;
+        }
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            margin: 8px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .color-box {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            margin-right: 5px;
+            vertical-align: middle;
+            border: 1px solid #666;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 4px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>Differential Scattering Coefficient σ<sub>s</sub></strong>
+        <div class="formula">
+            σ<sub>s</sub>(r⃗, Ω′→Ω, ν′→ν, t) ds dΩ dν
+        </div>
+        Probability that a photon traveling distance <strong>ds</strong> will scatter:<br>
+        • Direction: <strong>Ω′</strong> → <strong>Ω</strong><br>
+        • Frequency: <strong>ν′</strong> → <strong>ν</strong><br>
+        <br>
+        <strong>Units:</strong> m<sup>-1</sup> sr<sup>-1</sup> Hz<sup>-1</sup><br>
+        <br>
+        <span id="stats">Events: 0 | Avg ds: 0.00</span>
+    </div>
+    
+    <div id="legend">
+        <strong>Frequency/Color Mapping:</strong><br>
+        <span class="color-box" style="background: #0044ff;"></span> High ν (Blue)<br>
+        <span class="color-box" style="background: #00aaff;"></span> ↓<br>
+        <span class="color-box" style="background: #00ff88;"></span> Medium ν (Cyan/Green)<br>
+        <span class="color-box" style="background: #ffaa00;"></span> ↓<br>
+        <span class="color-box" style="background: #ff4400;"></span> Low ν (Red)<br>
+        <br>
+        <strong>Anisotropic Scattering:</strong><br>
+        • Arrow length ∝ σ<sub>s</sub>(Ω) probability<br>
+        • Longer arrows = higher probability<br>
+        • Forward scattering dominant<br>
+        • Color = scattered frequency
+    </div>
+    
+    <div id="controls">
+        <button onclick="toggleAnimation()">Pause/Resume</button>
+        <button onclick="resetSimulation()">Reset</button>
+        <button onclick="toggleVectors()">Toggle Vectors</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let hostAtoms = [];
+        let photons = [];
+        let scatterEvents = [];
+        let animationRunning = true;
+        let showVectors = true;
+        let totalEvents = 0;
+        let totalDistance = 0;
+
+        const boxSize = { x: 10, y: 7, z: 5 };
+        const numAtoms = 80;
+        const scatterProbability = 0.15;
+        const photonSpeed = 0.04;
+
+        // Frequency to color mapping (representing ν)
+        function frequencyToColor(freq) {
+            // freq ranges from 0 (low) to 1 (high)
+            if (freq > 0.8) return 0x0044ff;      // High frequency - blue
+            if (freq > 0.6) return 0x00aaff;      // Blue-cyan
+            if (freq > 0.4) return 0x00ff88;      // Cyan-green
+            if (freq > 0.2) return 0xffaa00;      // Orange
+            return 0xff4400;                       // Low frequency - red
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a15);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(14, 10, 14);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.2);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0xffffff, 0.8);
+            pointLight1.position.set(15, 15, 15);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x6699ff, 0.4);
+            pointLight2.position.set(-10, -10, -10);
+            scene.add(pointLight2);
+
+            // Bounding box
+            const boxGeometry = new THREE.BoxGeometry(boxSize.x, boxSize.y, boxSize.z);
+            const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+            const boxLine = new THREE.LineSegments(
+                boxEdges,
+                new THREE.LineBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.6 })
+            );
+            scene.add(boxLine);
+
+            // Host atoms
+            const atomGeometry = new THREE.SphereGeometry(0.12, 12, 12);
+            const atomMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xffffff,
+                emissive: 0x222222,
+                shininess: 40
+            });
+
+            for (let i = 0; i < numAtoms; i++) {
+                const atom = new THREE.Mesh(atomGeometry, atomMaterial);
+                atom.position.x = (Math.random() - 0.5) * boxSize.x;
+                atom.position.y = (Math.random() - 0.5) * boxSize.y;
+                atom.position.z = (Math.random() - 0.5) * boxSize.z;
+                scene.add(atom);
+                hostAtoms.push(atom);
+            }
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createPhoton() {
+            // Initial frequency (high - blue)
+            const initialFrequency = 0.9;
+            const color = frequencyToColor(initialFrequency);
+            
+            const photonGeometry = new THREE.SphereGeometry(0.1, 10, 10);
+            const photonMaterial = new THREE.MeshBasicMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.95
+            });
+            
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            
+            photon.position.x = -boxSize.x / 2 - 2;
+            photon.position.y = (Math.random() - 0.5) * boxSize.y * 0.7;
+            photon.position.z = (Math.random() - 0.5) * boxSize.z * 0.7;
+            
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailMaterial = new THREE.LineBasicMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.5,
+                linewidth: 2
+            });
+            const trail = new THREE.Line(trailGeometry, trailMaterial);
+            
+            photon.userData = {
+                velocity: new THREE.Vector3(photonSpeed, 0, 0),
+                active: true,
+                trail: trail,
+                trailPositions: [],
+                frequency: initialFrequency,
+                distanceTraveled: 0,
+                lastPosition: photon.position.clone()
+            };
+            
+            scene.add(photon);
+            scene.add(trail);
+            photons.push(photon);
+        }
+
+        function createScatterVisualization(position, incomingDir, scatteringPattern, freqAfter) {
+            const group = new THREE.Group();
+            group.position.copy(position);
+            
+            const color = frequencyToColor(freqAfter);
+            
+            // Create multiple arrows showing anisotropic scattering pattern
+            // Arrow lengths represent the probability density in that direction
+            for (let i = 0; i < scatteringPattern.length; i++) {
+                const pattern = scatteringPattern[i];
+                const arrowLength = pattern.probability * 3.0; // Scale for visibility
+                
+                const arrow = createArrow(
+                    new THREE.Vector3(0, 0, 0),
+                    pattern.direction.clone().multiplyScalar(arrowLength),
+                    color,
+                    0.15 + pattern.probability * 0.1
+                );
+                group.add(arrow);
+            }
+            
+            // Scattering point marker
+            const markerGeometry = new THREE.SphereGeometry(0.25, 16, 16);
+            const markerMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffff44,
+                transparent: true,
+                opacity: 0.9
+            });
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            group.add(marker);
+            
+            group.userData = { 
+                life: 4.0,
+                initialOpacity: 1.0
+            };
+            
+            scene.add(group);
+            scatterEvents.push(group);
+        }
+
+        function createArrow(start, direction, color, headSize = 0.2) {
+            const arrowGroup = new THREE.Group();
+            
+            // Arrow shaft
+            const shaftGeometry = new THREE.CylinderGeometry(0.04, 0.04, direction.length(), 8);
+            const shaftMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const shaft = new THREE.Mesh(shaftGeometry, shaftMaterial);
+            
+            // Arrow head
+            const headGeometry = new THREE.ConeGeometry(headSize, headSize * 2, 8);
+            const headMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            
+            // Position shaft
+            const midpoint = direction.clone().multiplyScalar(0.5);
+            shaft.position.copy(midpoint);
+            shaft.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                direction.clone().normalize()
+            );
+            
+            // Position head
+            head.position.copy(direction);
+            head.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                direction.clone().normalize()
+            );
+            
+            arrowGroup.add(shaft);
+            arrowGroup.add(head);
+            
+            if (!showVectors) {
+                arrowGroup.visible = false;
+            }
+            
+            return arrowGroup;
+        }
+
+        function scatterPhoton(photon) {
+            const incomingDirection = photon.userData.velocity.clone().normalize();
+            
+            // Record distance traveled before scattering
+            totalDistance += photon.userData.distanceTraveled;
+            totalEvents++;
+            
+            // Frequency shift (representing ν' → ν)
+            const frequencyShift = (Math.random() - 0.6) * 0.3; // Bias toward red-shift
+            const newFrequency = Math.max(0.1, Math.min(1.0, photon.userData.frequency + frequencyShift));
+            
+            // Generate anisotropic scattering pattern
+            // Forward scattering is more probable (common in real scattering)
+            const scatteringPattern = [];
+            const numDirections = 8 + Math.floor(Math.random() * 5); // 8-12 arrows
+            
+            for (let i = 0; i < numDirections; i++) {
+                // Generate random direction
+                const theta = Math.acos(2 * Math.random() - 1);
+                const phi = Math.random() * Math.PI * 2;
+                
+                const direction = new THREE.Vector3(
+                    Math.sin(theta) * Math.cos(phi),
+                    Math.sin(theta) * Math.sin(phi),
+                    Math.cos(theta)
+                ).normalize();
+                
+                // Calculate probability based on angle with forward direction
+                // Forward scattering (small angle) has higher probability
+                const cosAngle = direction.dot(incomingDirection);
+                const forwardBias = 2.0; // Controls anisotropy strength
+                const baseProbability = Math.exp(forwardBias * cosAngle);
+                
+                // Add some randomness
+                const probability = baseProbability * (0.3 + Math.random() * 0.7);
+                
+                scatteringPattern.push({
+                    direction: direction,
+                    probability: probability
+                });
+            }
+            
+            // Normalize probabilities
+            const totalProb = scatteringPattern.reduce((sum, p) => sum + p.probability, 0);
+            scatteringPattern.forEach(p => p.probability /= totalProb);
+            
+            // Choose actual scattering direction based on probability distribution
+            let randomVal = Math.random();
+            let cumulativeProb = 0;
+            let chosenDirection = scatteringPattern[0].direction;
+            
+            for (let pattern of scatteringPattern) {
+                cumulativeProb += pattern.probability;
+                if (randomVal <= cumulativeProb) {
+                    chosenDirection = pattern.direction;
+                    break;
+                }
+            }
+            
+            // Create visualization of the scattering event with anisotropic pattern
+            createScatterVisualization(
+                photon.position.clone(),
+                incomingDirection,
+                scatteringPattern,
+                newFrequency
+            );
+            
+            // Update photon properties with chosen direction
+            photon.userData.velocity = chosenDirection.clone().multiplyScalar(photonSpeed);
+            photon.userData.frequency = newFrequency;
+            photon.userData.distanceTraveled = 0;
+            
+            const newColor = frequencyToColor(newFrequency);
+            photon.material.color.setHex(newColor);
+            photon.userData.trail.material.color.setHex(newColor);
+            
+            // Clear trail
+            photon.userData.trailPositions = [];
+        }
+
+        function checkScattering(photon) {
+            for (let atom of hostAtoms) {
+                const distance = photon.position.distanceTo(atom.position);
+                if (distance < 0.3) {
+                    if (Math.random() < scatterProbability) {
+                        scatterPhoton(photon);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function isInsideBox(position) {
+            return Math.abs(position.x) < boxSize.x / 2 &&
+                   Math.abs(position.y) < boxSize.y / 2 &&
+                   Math.abs(position.z) < boxSize.z / 2;
+        }
+
+        function updatePhotons() {
+            for (let i = photons.length - 1; i >= 0; i--) {
+                const photon = photons[i];
+                
+                if (!photon.userData.active) continue;
+                
+                const prevPos = photon.position.clone();
+                photon.position.add(photon.userData.velocity);
+                
+                const stepDistance = photon.position.distanceTo(prevPos);
+                photon.userData.distanceTraveled += stepDistance;
+                
+                // Update trail
+                photon.userData.trailPositions.push(photon.position.clone());
+                if (photon.userData.trailPositions.length > 25) {
+                    photon.userData.trailPositions.shift();
+                }
+                
+                const positions = new Float32Array(photon.userData.trailPositions.length * 3);
+                for (let j = 0; j < photon.userData.trailPositions.length; j++) {
+                    positions[j * 3] = photon.userData.trailPositions[j].x;
+                    positions[j * 3 + 1] = photon.userData.trailPositions[j].y;
+                    positions[j * 3 + 2] = photon.userData.trailPositions[j].z;
+                }
+                photon.userData.trail.geometry.setAttribute('position', 
+                    new THREE.BufferAttribute(positions, 3));
+                
+                if (isInsideBox(photon.position)) {
+                    checkScattering(photon);
+                }
+                
+                const exitDistance = Math.max(boxSize.x, boxSize.y, boxSize.z) / 2 + 4;
+                if (photon.position.length() > exitDistance) {
+                    scene.remove(photon);
+                    scene.remove(photon.userData.trail);
+                    photons.splice(i, 1);
+                }
+            }
+        }
+
+        function updateScatterEvents() {
+            for (let i = scatterEvents.length - 1; i >= 0; i--) {
+                const event = scatterEvents[i];
+                event.userData.life -= 0.01;
+                
+                const opacity = event.userData.life / 4.0;
+                event.traverse((child) => {
+                    if (child.material) {
+                        child.material.opacity = opacity * event.userData.initialOpacity;
+                    }
+                });
+                
+                if (event.userData.life <= 0) {
+                    scene.remove(event);
+                    scatterEvents.splice(i, 1);
+                }
+            }
+        }
+
+        function updateStats() {
+            const avgDs = totalEvents > 0 ? (totalDistance / totalEvents) : 0;
+            document.getElementById('stats').textContent = 
+                `Events: ${totalEvents} | Avg ds: ${avgDs.toFixed(2)}`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animationRunning) {
+                if (Math.random() < 0.25) {
+                    createPhoton();
+                }
+                
+                updatePhotons();
+                updateScatterEvents();
+                updateStats();
+                
+                const time = Date.now() * 0.00008;
+                camera.position.x = Math.cos(time) * 14;
+                camera.position.z = Math.sin(time) * 14;
+                camera.lookAt(0, 0, 0);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+
+        function toggleVectors() {
+            showVectors = !showVectors;
+            scatterEvents.forEach(event => {
+                event.traverse((child) => {
+                    if (child.type === 'Group' && child.parent === event) {
+                        child.visible = showVectors;
+                    }
+                });
+            });
+        }
+
+        function resetSimulation() {
+            photons.forEach(photon => {
+                scene.remove(photon);
+                scene.remove(photon.userData.trail);
+            });
+            photons = [];
+            
+            scatterEvents.forEach(event => scene.remove(event));
+            scatterEvents = [];
+            
+            totalEvents = 0;
+            totalDistance = 0;
+            updateStats();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
