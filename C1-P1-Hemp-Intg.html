@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hemisphere Integration - Solid Angle</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #64b5f6;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+            text-shadow: 0 0 20px rgba(100, 181, 246, 0.5);
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #ffb74d;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            font-style: italic;
+        }
+        
+        .equation-box {
+            background: rgba(30, 30, 50, 0.8);
+            padding: 25px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid #64b5f6;
+            box-shadow: 0 0 20px rgba(100, 181, 246, 0.3);
+        }
+        
+        .equation {
+            font-size: 1.2em;
+            text-align: center;
+            color: #ffeb3b;
+            font-family: 'Courier New', monospace;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        canvas {
+            display: block;
+            margin: 20px auto;
+            background: #000000;
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(100, 181, 246, 0.3);
+            cursor: grab;
+        }
+        
+        canvas:active {
+            cursor: grabbing;
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 25px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-group {
+            margin: 15px 0;
+        }
+        
+        label {
+            display: inline-block;
+            width: 200px;
+            color: #b0b0b0;
+            font-size: 0.95em;
+        }
+        
+        input[type="range"] {
+            width: 250px;
+            vertical-align: middle;
+        }
+        
+        .value-display {
+            display: inline-block;
+            width: 100px;
+            text-align: right;
+            color: #64b5f6;
+            font-weight: bold;
+        }
+        
+        .legend {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .legend h3 {
+            color: #64b5f6;
+            margin-top: 0;
+        }
+        
+        .legend-item {
+            margin: 12px 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .legend-gradient {
+            width: 200px;
+            height: 25px;
+            margin-right: 15px;
+            border-radius: 5px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        .button-group {
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hemisphere Integration - Solid Angle</h1>
+        <div class="subtitle">Integration over θ ∈ [0, π/2] and φ ∈ [0, 2π]</div>
+        
+        <div class="equation-box">
+            <div class="equation">
+                ∫∫ dΩ = ∫₀²ᵖⁱ ∫₀ᵖⁱ/² sin(θ) dθ dφ = 2π
+            </div>
+            <p style="text-align: center; color: #b0b0b0; margin-top: 10px;">
+                θ = polar angle (0 to π/2), φ = azimuthal angle (0 to 2π)
+            </p>
+        </div>
+        
+        <canvas id="canvas" width="1200" height="800"></canvas>
+        
+        <div class="button-group">
+            <button onclick="resetView()">Reset View</button>
+            <button onclick="toggleRotation()">Toggle Auto-Rotate</button>
+            <button onclick="toggleGrid()">Toggle Grid</button>
+        </div>
+        
+        <div class="controls">
+            <h3 style="color: #64b5f6; margin-top: 0;">Visualization Controls</h3>
+            <div class="control-group">
+                <label>Rotation X:</label>
+                <input type="range" id="rotationX" min="0" max="360" value="30" step="5">
+                <span class="value-display" id="rotXValue">30°</span>
+            </div>
+            <div class="control-group">
+                <label>Rotation Z:</label>
+                <input type="range" id="rotationZ" min="0" max="360" value="45" step="5">
+                <span class="value-display" id="rotZValue">45°</span>
+            </div>
+            <div class="control-group">
+                <label>Hemisphere Resolution:</label>
+                <input type="range" id="resolution" min="10" max="40" value="25" step="5">
+                <span class="value-display" id="resValue">25</span>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <h3>Color Coding</h3>
+            <div class="legend-item">
+                <div class="legend-gradient" style="background: linear-gradient(to right, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3);"></div>
+                <span><strong>Azimuthal angle φ:</strong> 0° (red) → 360° (violet)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-gradient" style="background: linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.3) 100%);"></div>
+                <span><strong>Polar angle θ:</strong> 0° (bright) → 90° (darker)</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let rotX = 30 * Math.PI / 180;
+        let rotZ = 45 * Math.PI / 180;
+        let autoRotate = false;
+        let showGrid = true;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        
+        function project3D(x, y, z, rotX, rotZ) {
+            // Rotate around X axis
+            let y1 = y * Math.cos(rotX) - z * Math.sin(rotX);
+            let z1 = y * Math.sin(rotX) + z * Math.cos(rotX);
+            
+            // Rotate around Z axis
+            let x2 = x * Math.cos(rotZ) - y1 * Math.sin(rotZ);
+            let y2 = x * Math.sin(rotZ) + y1 * Math.cos(rotZ);
+            
+            // Perspective projection
+            const perspective = 600;
+            const scale = perspective / (perspective + z1);
+            
+            return {
+                x: canvas.width / 2 + x2 * scale,
+                y: canvas.height / 2 - y2 * scale,
+                z: z1,
+                scale: scale
+            };
+        }
+        
+        function sphericalToCartesian(r, theta, phi) {
+            return {
+                x: r * Math.sin(theta) * Math.cos(phi),
+                y: r * Math.sin(theta) * Math.sin(phi),
+                z: r * Math.cos(theta)
+            };
+        }
+        
+        function getColorForAngles(theta, phi) {
+            // Color based on azimuthal angle (hue)
+            const hue = (phi / (2 * Math.PI)) * 360;
+            
+            // Brightness based on polar angle
+            const brightness = 90 - (theta / (Math.PI / 2)) * 40;
+            
+            return `hsl(${hue}, 80%, ${brightness}%)`;
+        }
+        
+        function drawHemisphere() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const radius = 250;
+            const thetaSteps = parseInt(document.getElementById('resolution').value);
+            const phiSteps = thetaSteps * 2;
+            
+            const dTheta = (Math.PI / 2) / thetaSteps;
+            const dPhi = (2 * Math.PI) / phiSteps;
+            
+            // Store all patches with their z-depths for sorting
+            const patches = [];
+            
+            // Generate hemisphere patches
+            for (let i = 0; i < thetaSteps; i++) {
+                for (let j = 0; j < phiSteps; j++) {
+                    const theta1 = i * dTheta;
+                    const theta2 = (i + 1) * dTheta;
+                    const phi1 = j * dPhi;
+                    const phi2 = (j + 1) * dPhi;
+                    
+                    // Four corners of the patch
+                    const p1 = sphericalToCartesian(radius, theta1, phi1);
+                    const p2 = sphericalToCartesian(radius, theta1, phi2);
+                    const p3 = sphericalToCartesian(radius, theta2, phi2);
+                    const p4 = sphericalToCartesian(radius, theta2, phi1);
+                    
+                    // Project to 2D
+                    const proj1 = project3D(p1.x, p1.y, p1.z, rotX, rotZ);
+                    const proj2 = project3D(p2.x, p2.y, p2.z, rotX, rotZ);
+                    const proj3 = project3D(p3.x, p3.y, p3.z, rotX, rotZ);
+                    const proj4 = project3D(p4.x, p4.y, p4.z, rotX, rotZ);
+                    
+                    // Average z for depth sorting
+                    const avgZ = (proj1.z + proj2.z + proj3.z + proj4.z) / 4;
+                    
+                    // Average angles for coloring
+                    const avgTheta = (theta1 + theta2) / 2;
+                    const avgPhi = (phi1 + phi2) / 2;
+                    
+                    patches.push({
+                        corners: [proj1, proj2, proj3, proj4],
+                        z: avgZ,
+                        color: getColorForAngles(avgTheta, avgPhi)
+                    });
+                }
+            }
+            
+            // Sort patches by depth (back to front)
+            patches.sort((a, b) => a.z - b.z);
+            
+            // Draw patches
+            patches.forEach(patch => {
+                ctx.beginPath();
+                ctx.moveTo(patch.corners[0].x, patch.corners[0].y);
+                ctx.lineTo(patch.corners[1].x, patch.corners[1].y);
+                ctx.lineTo(patch.corners[2].x, patch.corners[2].y);
+                ctx.lineTo(patch.corners[3].x, patch.corners[3].y);
+                ctx.closePath();
+                
+                ctx.fillStyle = patch.color;
+                ctx.fill();
+                
+                if (showGrid) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+            });
+            
+            // Draw base circle
+            ctx.beginPath();
+            const circlePoints = [];
+            for (let i = 0; i <= phiSteps; i++) {
+                const phi = (i / phiSteps) * 2 * Math.PI;
+                const p = sphericalToCartesian(radius, Math.PI / 2, phi);
+                const proj = project3D(p.x, p.y, p.z, rotX, rotZ);
+                if (i === 0) {
+                    ctx.moveTo(proj.x, proj.y);
+                } else {
+                    ctx.lineTo(proj.x, proj.y);
+                }
+                circlePoints.push(proj);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = '#64b5f6';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Draw coordinate axes
+            const axisLength = radius * 1.3;
+            
+            // Z-axis (vertical)
+            const zAxis = [
+                project3D(0, 0, 0, rotX, rotZ),
+                project3D(0, 0, axisLength, rotX, rotZ)
+            ];
+            ctx.beginPath();
+            ctx.moveTo(zAxis[0].x, zAxis[0].y);
+            ctx.lineTo(zAxis[1].x, zAxis[1].y);
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Arrowhead
+            drawArrow(zAxis[1].x, zAxis[1].y, Math.atan2(zAxis[1].y - zAxis[0].y, zAxis[1].x - zAxis[0].x), '#e74c3c');
+            
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText('z', zAxis[1].x + 15, zAxis[1].y - 10);
+            
+            // X-axis
+            const xAxis = [
+                project3D(0, 0, 0, rotX, rotZ),
+                project3D(axisLength, 0, 0, rotX, rotZ)
+            ];
+            ctx.beginPath();
+            ctx.moveTo(xAxis[0].x, xAxis[0].y);
+            ctx.lineTo(xAxis[1].x, xAxis[1].y);
+            ctx.strokeStyle = '#4caf50';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            drawArrow(xAxis[1].x, xAxis[1].y, Math.atan2(xAxis[1].y - xAxis[0].y, xAxis[1].x - xAxis[0].x), '#4caf50');
+            
+            ctx.fillStyle = '#4caf50';
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText('x', xAxis[1].x + 10, xAxis[1].y + 5);
+            
+            // Y-axis
+            const yAxis = [
+                project3D(0, 0, 0, rotX, rotZ),
+                project3D(0, axisLength, 0, rotX, rotZ)
+            ];
+            ctx.beginPath();
+            ctx.moveTo(yAxis[0].x, yAxis[0].y);
+            ctx.lineTo(yAxis[1].x, yAxis[1].y);
+            ctx.strokeStyle = '#2196f3';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            drawArrow(yAxis[1].x, yAxis[1].y, Math.atan2(yAxis[1].y - yAxis[0].y, yAxis[1].x - yAxis[0].x), '#2196f3');
+            
+            ctx.fillStyle = '#2196f3';
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText('y', yAxis[1].x + 10, yAxis[1].y + 5);
+            
+            // Draw angle labels
+            ctx.fillStyle = '#ffeb3b';
+            ctx.font = 'bold 20px Arial';
+            
+            // Theta label (polar angle)
+            const thetaPos = project3D(radius * 0.4, 0, radius * 0.3, rotX, rotZ);
+            ctx.fillText('θ', thetaPos.x, thetaPos.y);
+            
+            // Draw theta arc
+            ctx.strokeStyle = 'rgba(255, 235, 59, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let t = 0; t <= Math.PI / 2; t += 0.1) {
+                const p = sphericalToCartesian(radius * 0.5, t, 0);
+                const proj = project3D(p.x, p.y, p.z, rotX, rotZ);
+                if (t === 0) {
+                    ctx.moveTo(proj.x, proj.y);
+                } else {
+                    ctx.lineTo(proj.x, proj.y);
+                }
+            }
+            ctx.stroke();
+            
+            // Phi label (azimuthal angle)
+            const phiPos = project3D(radius * 0.6, radius * 0.3, 0, rotX, rotZ);
+            ctx.fillStyle = '#ff9800';
+            ctx.fillText('φ', phiPos.x, phiPos.y);
+            
+            // Draw phi arc at base
+            ctx.strokeStyle = 'rgba(255, 152, 0, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let p = 0; p <= Math.PI / 2; p += 0.05) {
+                const pt = sphericalToCartesian(radius * 0.7, Math.PI / 2, p);
+                const proj = project3D(pt.x, pt.y, pt.z, rotX, rotZ);
+                if (p === 0) {
+                    ctx.moveTo(proj.x, proj.y);
+                } else {
+                    ctx.lineTo(proj.x, proj.y);
+                }
+            }
+            ctx.stroke();
+            
+            // Display info
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('Polar angle θ: 0° → 90°', 20, 30);
+            ctx.fillText('Azimuthal angle φ: 0° → 360°', 20, 55);
+            ctx.fillText('Solid angle: Ω = 2π steradians', 20, 80);
+        }
+        
+        function drawArrow(x, y, angle, color) {
+            const size = 12;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - size * Math.cos(angle - 0.4), y - size * Math.sin(angle - 0.4));
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - size * Math.cos(angle + 0.4), y - size * Math.sin(angle + 0.4));
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
+        function animate() {
+            if (autoRotate) {
+                rotZ += 0.01;
+                document.getElementById('rotationZ').value = (rotZ * 180 / Math.PI) % 360;
+                document.getElementById('rotZValue').textContent = Math.round((rotZ * 180 / Math.PI) % 360) + '°';
+            }
+            
+            drawHemisphere();
+            requestAnimationFrame(animate);
+        }
+        
+        function resetView() {
+            document.getElementById('rotationX').value = 30;
+            document.getElementById('rotationZ').value = 45;
+            document.getElementById('resolution').value = 25;
+            
+            document.getElementById('rotXValue').textContent = '30°';
+            document.getElementById('rotZValue').textContent = '45°';
+            document.getElementById('resValue').textContent = '25';
+            
+            rotX = 30 * Math.PI / 180;
+            rotZ = 45 * Math.PI / 180;
+            autoRotate = false;
+        }
+        
+        function toggleRotation() {
+            autoRotate = !autoRotate;
+        }
+        
+        function toggleGrid() {
+            showGrid = !showGrid;
+        }
+        
+        // Event listeners
+        document.getElementById('rotationX').addEventListener('input', (e) => {
+            rotX = parseFloat(e.target.value) * Math.PI / 180;
+            document.getElementById('rotXValue').textContent = e.target.value + '°';
+        });
+        
+        document.getElementById('rotationZ').addEventListener('input', (e) => {
+            rotZ = parseFloat(e.target.value) * Math.PI / 180;
+            document.getElementById('rotZValue').textContent = e.target.value + '°';
+        });
+        
+        document.getElementById('resolution').addEventListener('input', (e) => {
+            document.getElementById('resValue').textContent = e.target.value;
+        });
+        
+        // Mouse drag to rotate
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                
+                rotZ += deltaX * 0.01;
+                rotX += deltaY * 0.01;
+                
+                rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
+                
+                document.getElementById('rotationX').value = Math.round(rotX * 180 / Math.PI);
+                document.getElementById('rotationZ').value = Math.round(rotZ * 180 / Math.PI) % 360;
+                
+                document.getElementById('rotXValue').textContent = Math.round(rotX * 180 / Math.PI) + '°';
+                document.getElementById('rotZValue').textContent = Math.round(rotZ * 180 / Math.PI) % 360 + '°';
+                
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+        
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
