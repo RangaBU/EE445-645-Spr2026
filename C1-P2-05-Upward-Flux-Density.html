@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Upward Flux Density Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #1a237e, #283593);
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 350px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        #info h2 {
+            margin-top: 0;
+            font-size: 20px;
+            color: #64b5f6;
+        }
+        #info .formula {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        #legend h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #64b5f6;
+        }
+        .legend-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+        .color-box {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid white;
+            border-radius: 3px;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        #controls h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #64b5f6;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="info">
+        <h2>Upward Flux Density</h2>
+        <p>Interactive 3D visualization showing radiation flux across a horizontal surface.</p>
+        <div class="formula">
+            F⁺(r, ν, t) = ∫ I(r, ν, Ω, t) |n·Ω| dΩ
+            <br><br>
+            = ∫₀²ᵖ dφ ∫₀¹ dμ I(r, ν, μ, φ, t) μ
+        </div>
+        <p style="font-size: 12px; margin-top: 10px; color: #ffeb3b;">
+            <strong>Key:</strong> The yellow plane shows where Ω projects. 
+            φ is measured on this plane from x-axis (red) to proj(Ω) (purple).
+        </p>
+        <p><strong>Drag to rotate</strong> • <strong>Scroll to zoom</strong></p>
+    </div>
+    
+    <div id="legend">
+        <h3>Components</h3>
+        <div class="legend-item">
+            <div class="color-box" style="background: #1565c0;"></div>
+            <span><strong>n</strong> - Normal vector (upward)</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #c62828;"></div>
+            <span><strong>Ω</strong> - Direction vector</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #9c27b0;"></div>
+            <span><strong>proj(Ω)</strong> - Projection of Ω on x-y plane</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #ff6f00;"></div>
+            <span><strong>θ</strong> - Polar angle (from vertical)</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #7b1fa2;"></div>
+            <span><strong>φ</strong> - Azimuthal angle (x-axis to proj(Ω))</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: rgba(255, 235, 59, 0.15);"></div>
+            <span>Projection plane (x-y horizontal)</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #ffb74d;"></div>
+            <span><strong>dΩ</strong> - Solid angle cone around Ω</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: rgba(100, 181, 246, 0.4);"></div>
+            <span>Integration hemisphere</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #ff0000;"></div>
+            <span><strong>x-axis</strong> (φ = 0 reference)</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #00ff00;"></div>
+            <span><strong>y-axis</strong> (horizontal)</span>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <h3>View Controls</h3>
+        <p>🖱️ <strong>Left drag:</strong> Rotate view<br>
+        🖱️ <strong>Right drag:</strong> Pan<br>
+        🖱️ <strong>Scroll:</strong> Zoom in/out</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0e27);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 4, 5);
+        camera.lookAt(0, 0, 0);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 5);
+        scene.add(directionalLight);
+        
+        const pointLight = new THREE.PointLight(0x64b5f6, 0.5);
+        pointLight.position.set(0, 5, 0);
+        scene.add(pointLight);
+        
+        // Create horizontal surface (disk)
+        const surfaceGeometry = new THREE.CylinderGeometry(2.5, 2.5, 0.1, 64);
+        const surfaceMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x78909c,
+            opacity: 0.9,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+        const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
+        surface.position.y = 0;
+        scene.add(surface);
+        
+        // Add grid on surface
+        const gridHelper = new THREE.GridHelper(5, 20, 0x546e7a, 0x37474f);
+        gridHelper.position.y = 0.06;
+        scene.add(gridHelper);
+        
+        // Create hemisphere
+        const hemisphereGeometry = new THREE.SphereGeometry(2.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const hemisphereMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x64b5f6,
+            opacity: 0.3,
+            transparent: true,
+            side: THREE.DoubleSide,
+            wireframe: false
+        });
+        const hemisphere = new THREE.Mesh(hemisphereGeometry, hemisphereMaterial);
+        hemisphere.position.y = 0;
+        scene.add(hemisphere);
+        
+        // Wireframe for hemisphere
+        const hemisphereWireframe = new THREE.WireframeGeometry(hemisphereGeometry);
+        const hemisphereLines = new THREE.LineSegments(
+            hemisphereWireframe,
+            new THREE.LineBasicMaterial({ color: 0x1976d2, opacity: 0.4, transparent: true })
+        );
+        hemisphereLines.position.y = 0;
+        scene.add(hemisphereLines);
+        
+        // Create normal vector (n)
+        const normalArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(0, 0, 0),
+            3,
+            0x1565c0,
+            0.3,
+            0.2
+        );
+        scene.add(normalArrow);
+        
+        // Create direction vector (Ω)
+        // Using spherical coordinates: theta = 35°, phi = 45°
+        const theta = Math.PI / 5; // ~36 degrees from vertical
+        const phi = Math.PI / 4;   // 45 degrees azimuthal
+        const radius = 2.5;
+        
+        const directionVector = new THREE.Vector3(
+            radius * Math.sin(theta) * Math.cos(phi),
+            radius * Math.cos(theta),
+            radius * Math.sin(theta) * Math.sin(phi)
+        );
+        
+        const directionArrow = new THREE.ArrowHelper(
+            directionVector.clone().normalize(),
+            new THREE.Vector3(0, 0, 0),
+            directionVector.length(),
+            0xc62828,
+            0.3,
+            0.2
+        );
+        scene.add(directionArrow);
+        
+        // Create solid angle as a cone around Ω extending to hemisphere
+        const coneAngle = 0.12; // Half-angle of cone in radians
+        const coneHeight = radius; // Extend to hemisphere surface
+        const coneRadius = coneHeight * Math.tan(coneAngle);
+        
+        const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 32, 1, true);
+        const coneMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xffb74d,
+            opacity: 0.4,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+        const solidAngleCone = new THREE.Mesh(coneGeometry, coneMaterial);
+        
+        // Position and orient the cone along Ω direction
+        solidAngleCone.position.copy(directionVector.clone().normalize().multiplyScalar(coneHeight/2));
+        solidAngleCone.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, -1, 0), // Cone default direction
+            directionVector.clone().normalize()
+        );
+        scene.add(solidAngleCone);
+        
+        // Add wireframe edges to cone for better visibility
+        const coneEdges = new THREE.EdgesGeometry(coneGeometry);
+        const coneLines = new THREE.LineSegments(
+            coneEdges,
+            new THREE.LineBasicMaterial({ color: 0xff6f00, linewidth: 2, opacity: 0.8, transparent: true })
+        );
+        coneLines.position.copy(solidAngleCone.position);
+        coneLines.quaternion.copy(solidAngleCone.quaternion);
+        scene.add(coneLines);
+        
+        // Create theta arc (polar angle from vertical/normal to direction)
+        // Arc in the vertical plane containing the direction vector
+        const thetaArcRadius = 1.2;
+        const thetaCurvePoints = [];
+        for (let t = 0; t <= theta; t += theta / 30) {
+            thetaCurvePoints.push(new THREE.Vector3(
+                thetaArcRadius * Math.sin(t) * Math.cos(phi),
+                thetaArcRadius * Math.cos(t),
+                thetaArcRadius * Math.sin(t) * Math.sin(phi)
+            ));
+        }
+        const thetaGeometry = new THREE.BufferGeometry().setFromPoints(thetaCurvePoints);
+        const thetaMaterial = new THREE.LineBasicMaterial({ color: 0xff6f00, linewidth: 3 });
+        const thetaArc = new THREE.Line(thetaGeometry, thetaMaterial);
+        scene.add(thetaArc);
+        
+        // Add X and Y axes on the horizontal plane with thicker, more visible lines
+        const axisLength = 2.8;
+        const axisRadius = 0.04; // Thick cylinder for axes
+        
+        // X-axis (red) - as a cylinder
+        const xAxisGeometry = new THREE.CylinderGeometry(axisRadius, axisRadius, axisLength, 16);
+        const xAxisMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+        const xAxis = new THREE.Mesh(xAxisGeometry, xAxisMaterial);
+        xAxis.rotation.z = -Math.PI / 2;
+        xAxis.position.set(axisLength/2, 0.05, 0);
+        scene.add(xAxis);
+        
+        // X-axis arrow tip
+        const xArrowCone = new THREE.Mesh(
+            new THREE.ConeGeometry(axisRadius * 2.5, 0.15, 16),
+            xAxisMaterial
+        );
+        xArrowCone.rotation.z = -Math.PI / 2;
+        xArrowCone.position.set(axisLength + 0.075, 0.05, 0);
+        scene.add(xArrowCone);
+        
+        // Y-axis (green) - as a cylinder
+        const yAxisGeometry = new THREE.CylinderGeometry(axisRadius, axisRadius, axisLength, 16);
+        const yAxisMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+        const yAxis = new THREE.Mesh(yAxisGeometry, yAxisMaterial);
+        yAxis.rotation.x = Math.PI / 2;
+        yAxis.position.set(0, 0.05, axisLength/2);
+        scene.add(yAxis);
+        
+        // Y-axis arrow tip
+        const yArrowCone = new THREE.Mesh(
+            new THREE.ConeGeometry(axisRadius * 2.5, 0.15, 16),
+            yAxisMaterial
+        );
+        yArrowCone.rotation.x = Math.PI / 2;
+        yArrowCone.rotation.z = Math.PI;
+        yArrowCone.position.set(0, 0.05, axisLength + 0.075);
+        scene.add(yArrowCone);
+        
+        // Create phi arc (azimuthal angle on horizontal plane)
+        const phiArcRadius = 1.5;
+        const phiCurvePoints = [];
+        for (let p = 0; p <= phi; p += phi / 50) {
+            phiCurvePoints.push(new THREE.Vector3(
+                phiArcRadius * Math.cos(p),
+                0.12, // Slightly above surface
+                phiArcRadius * Math.sin(p)
+            ));
+        }
+        const phiGeometry = new THREE.BufferGeometry().setFromPoints(phiCurvePoints);
+        const phiMaterial = new THREE.LineBasicMaterial({ color: 0x7b1fa2, linewidth: 6 });
+        const phiArc = new THREE.Line(phiGeometry, phiMaterial);
+        scene.add(phiArc);
+        
+        // Calculate projection point on horizontal plane
+        const projectionPoint = new THREE.Vector3(
+            directionVector.x,
+            0.12,
+            directionVector.z
+        );
+        
+        // Create a semi-transparent disk on the x-y plane to emphasize the projection plane
+        const projectionDiskGeometry = new THREE.CircleGeometry(2.3, 64);
+        const projectionDiskMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffeb3b,
+            opacity: 0.15,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+        const projectionDisk = new THREE.Mesh(projectionDiskGeometry, projectionDiskMaterial);
+        projectionDisk.rotation.x = -Math.PI / 2;
+        projectionDisk.position.y = 0.11;
+        scene.add(projectionDisk);
+        
+        // Draw THICK projection vector as an arrow on the x-y plane
+        const projectionArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(projectionPoint.x, 0, projectionPoint.z).normalize(),
+            new THREE.Vector3(0, 0.12, 0),
+            Math.sqrt(projectionPoint.x * projectionPoint.x + projectionPoint.z * projectionPoint.z),
+            0x9c27b0,
+            0.25,
+            0.2
+        );
+        scene.add(projectionArrow);
+        
+        // Add multiple spheres at key points
+        // Sphere at origin
+        const originSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.1, 16, 16),
+            new THREE.MeshPhongMaterial({ 
+                color: 0xffffff,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.5
+            })
+        );
+        originSphere.position.set(0, 0.12, 0);
+        scene.add(originSphere);
+        
+        // Sphere at the projection point
+        const projectionSphereGeometry = new THREE.SphereGeometry(0.12, 16, 16);
+        const projectionSphereMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x9c27b0,
+            emissive: 0x9c27b0,
+            emissiveIntensity: 0.4
+        });
+        const projectionSphere = new THREE.Mesh(projectionSphereGeometry, projectionSphereMaterial);
+        projectionSphere.position.copy(projectionPoint);
+        scene.add(projectionSphere);
+        
+        // Draw THICK vertical line from Ω to its projection with alternating colors
+        const verticalLineGeom = new THREE.BufferGeometry().setFromPoints([
+            directionVector,
+            projectionPoint
+        ]);
+        const verticalLineMaterial = new THREE.LineDashedMaterial({
+            color: 0x9c27b0,
+            linewidth: 4,
+            dashSize: 0.2,
+            gapSize: 0.1,
+            opacity: 0.9,
+            transparent: true
+        });
+        const verticalLine = new THREE.Line(verticalLineGeom, verticalLineMaterial);
+        verticalLine.computeLineDistances();
+        scene.add(verticalLine);
+        
+        // Draw reference line along x-axis (thicker and more visible)
+        const xRefArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(0, 0.12, 0),
+            phiArcRadius,
+            0xff0000,
+            0.15,
+            0.12
+        );
+        scene.add(xRefArrow);
+        
+        // Add shaded sector for phi angle (filled region)
+        const phiSectorShape = new THREE.Shape();
+        phiSectorShape.moveTo(0, 0);
+        for (let p = 0; p <= phi; p += phi / 30) {
+            const r = phiArcRadius * 0.9;
+            phiSectorShape.lineTo(r * Math.cos(p), r * Math.sin(p));
+        }
+        phiSectorShape.lineTo(0, 0);
+        
+        const phiSectorGeometry = new THREE.ShapeGeometry(phiSectorShape);
+        const phiSectorMaterial = new THREE.MeshBasicMaterial({
+            color: 0x7b1fa2,
+            opacity: 0.25,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+        const phiSector = new THREE.Mesh(phiSectorGeometry, phiSectorMaterial);
+        phiSector.rotation.x = -Math.PI / 2;
+        phiSector.position.y = 0.13;
+        scene.add(phiSector);
+        
+        // Add coordinate system origin point
+        const originGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+        const originMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+        const origin = new THREE.Mesh(originGeometry, originMaterial);
+        origin.position.set(0, 0, 0);
+        scene.add(origin);
+        
+        // Create text sprites for labels
+        function createTextSprite(text, color = '#ffffff') {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+            
+            context.fillStyle = color;
+            context.font = 'Bold 120px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 256, 128);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(1.0, 0.5, 1);
+            
+            return sprite;
+        }
+        
+        // Add labels
+        const nLabel = createTextSprite('n', '#1565c0');
+        nLabel.position.set(0.3, 3.2, 0);
+        scene.add(nLabel);
+        
+        const omegaLabel = createTextSprite('Ω', '#c62828');
+        omegaLabel.position.copy(directionVector).multiplyScalar(1.15);
+        scene.add(omegaLabel);
+        
+        const thetaLabel = createTextSprite('θ', '#ff6f00');
+        thetaLabel.position.set(
+            thetaArcRadius * 0.6 * Math.sin(theta/2) * Math.cos(phi) + 0.2,
+            thetaArcRadius * 0.6 * Math.cos(theta/2) + 0.1,
+            thetaArcRadius * 0.6 * Math.sin(theta/2) * Math.sin(phi)
+        );
+        scene.add(thetaLabel);
+        
+        const phiLabel = createTextSprite('φ', '#7b1fa2');
+        phiLabel.position.set(
+            phiArcRadius * Math.cos(phi/2) * 1.1,
+            0.15,
+            phiArcRadius * Math.sin(phi/2) * 1.1
+        );
+        scene.add(phiLabel);
+        
+        const dOmegaLabel = createTextSprite('dΩ', '#ffb74d');
+        // Position label near the cone's intersection with hemisphere
+        dOmegaLabel.position.copy(directionVector.clone().normalize().multiplyScalar(radius * 0.85));
+        dOmegaLabel.position.x += 0.4;
+        dOmegaLabel.position.y += 0.2;
+        scene.add(dOmegaLabel);
+        
+        const rLabel = createTextSprite('r', '#ffffff');
+        rLabel.position.set(0.3, -0.3, 0);
+        scene.add(rLabel);
+        
+        // X and Y axis labels
+        const xLabel = createTextSprite('x', '#ff0000');
+        xLabel.position.set(axisLength + 0.3, 0.1, 0);
+        scene.add(xLabel);
+        
+        const yLabel = createTextSprite('y', '#00ff00');
+        yLabel.position.set(0, 0.1, axisLength + 0.3);
+        scene.add(yLabel);
+        
+        // Label for the projection of Ω on x-y plane (larger and clearer)
+        const projLabel = createTextSprite('proj(Ω)', '#9c27b0');
+        projLabel.position.set(projectionPoint.x + 0.5, 0.25, projectionPoint.z + 0.4);
+        scene.add(projLabel);
+        
+        // Mouse controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let rotation = { x: 0, y: 0 };
+        
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+        
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                rotation.y += deltaX * 0.005;
+                rotation.x += deltaY * 0.005;
+                
+                rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotation.x));
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+        
+        renderer.domElement.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.001;
+            const distance = camera.position.length();
+            const newDistance = distance + e.deltaY * zoomSpeed * distance;
+            
+            if (newDistance > 3 && newDistance < 15) {
+                camera.position.normalize().multiplyScalar(newDistance);
+            }
+        });
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update camera position based on rotation
+            const radius = camera.position.length();
+            camera.position.x = radius * Math.sin(rotation.y) * Math.cos(rotation.x);
+            camera.position.y = radius * Math.sin(rotation.x);
+            camera.position.z = radius * Math.cos(rotation.y) * Math.cos(rotation.x);
+            camera.lookAt(0, 0, 0);
+            
+            // Rotate hemisphere slightly for visual effect
+            hemisphere.rotation.y += 0.001;
+            hemisphereLines.rotation.y += 0.001;
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

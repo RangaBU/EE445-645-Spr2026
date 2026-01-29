@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incident Radiation on Surface</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        
+        canvas {
+            display: block;
+            background: white;
+            border-radius: 10px;
+        }
+        
+        h2 {
+            text-align: center;
+            color: #2c3e50;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        .caption {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 15px;
+            max-width: 700px;
+            margin: 10px auto;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="canvas" width="800" height="700"></canvas>
+        <h2>Incident Radiation on Surface Element</h2>
+        <p class="caption">
+            A single radiation beam traveling along direction <b>Ω</b> incident on surface element <b>ds</b> 
+            at an angle <b>θ = 60°</b> to the surface normal <b>n⃗</b>. The green area <b>ds<sub>Ω</sub></b> shows 
+            the shadow of ds cast onto a plane perpendicular to Ω, with area = ds cos(60°) = 0.5 ds.
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Clear background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // 3D projection setup
+        const centerX = 400;
+        const centerY = 400;
+        
+        function project3D(x, y, z) {
+            // Isometric-like projection
+            const scale = 1;
+            const screenX = centerX + (x - z * 0.5) * scale;
+            const screenY = centerY + (y - z * 0.4 - x * 0.3) * scale;
+            return { x: screenX, y: screenY };
+        }
+        
+        // Define cube vertices in 3D
+        const cubeSize = 180;
+        const vertices3D = [
+            // Bottom face (y = cubeSize)
+            [-cubeSize/2, cubeSize, -cubeSize/2],  // 0
+            [cubeSize/2, cubeSize, -cubeSize/2],   // 1
+            [cubeSize/2, cubeSize, cubeSize/2],    // 2
+            [-cubeSize/2, cubeSize, cubeSize/2],   // 3
+            // Top face (y = 0)
+            [-cubeSize/2, 0, -cubeSize/2],         // 4
+            [cubeSize/2, 0, -cubeSize/2],          // 5
+            [cubeSize/2, 0, cubeSize/2],           // 6
+            [-cubeSize/2, 0, cubeSize/2]           // 7
+        ];
+        
+        const projected = vertices3D.map(v => project3D(v[0], v[1], v[2]));
+        
+        // Physics parameters
+        const theta = 60 * Math.PI / 180; // 60 degrees
+        const normalAngle = -Math.PI / 2; // normal points straight up
+        const omegaAngle = Math.PI / 2 - theta; // beam comes down at 60° from vertical
+        
+        // Omega direction in 3D (beam direction)
+        // Since beam comes at 60° from vertical (y-axis), and in the x-y plane
+        const omega3D = [Math.sin(theta), Math.cos(theta), 0];  // [x, y, z] components
+        
+        // Top surface corners in 3D
+        const topSurface3D = [
+            vertices3D[4],  // [-cubeSize/2, 0, -cubeSize/2]
+            vertices3D[5],  // [cubeSize/2, 0, -cubeSize/2]
+            vertices3D[6],  // [cubeSize/2, 0, cubeSize/2]
+            vertices3D[7]   // [-cubeSize/2, 0, cubeSize/2]
+        ];
+        
+        // Create the perpendicular plane in 3D
+        // Plane passes through a point along Omega from the surface center
+        const surfaceCenter3D = [0, 0, 0];
+        const planeDistance = 120;
+        const planeCenter3D = [
+            surfaceCenter3D[0] + planeDistance * omega3D[0],
+            surfaceCenter3D[1] + planeDistance * omega3D[1],
+            surfaceCenter3D[2] + planeDistance * omega3D[2]
+        ];
+        
+        // Project each corner of the top surface onto the perpendicular plane
+        // Projection formula: shadowPoint = corner + t * omega
+        // where t is chosen so shadowPoint lies on the plane
+        function projectOntoPlane(point3D, planeCenter3D, planeNormal) {
+            // Vector from point to plane center
+            const v = [
+                planeCenter3D[0] - point3D[0],
+                planeCenter3D[1] - point3D[1],
+                planeCenter3D[2] - point3D[2]
+            ];
+            
+            // t = v · n / (n · n)
+            const vDotN = v[0] * planeNormal[0] + v[1] * planeNormal[1] + v[2] * planeNormal[2];
+            const nDotN = planeNormal[0] * planeNormal[0] + planeNormal[1] * planeNormal[1] + planeNormal[2] * planeNormal[2];
+            const t = vDotN / nDotN;
+            
+            return [
+                point3D[0] + t * planeNormal[0],
+                point3D[1] + t * planeNormal[1],
+                point3D[2] + t * planeNormal[2]
+            ];
+        }
+        
+        // Project top surface corners onto the perpendicular plane
+        const shadowCorners3D = topSurface3D.map(corner => 
+            projectOntoPlane(corner, planeCenter3D, omega3D)
+        );
+        
+        // Convert shadow corners to 2D screen coordinates
+        const shadowCorners2D = shadowCorners3D.map(v => project3D(v[0], v[1], v[2]));
+        
+        // Draw the perpendicular plane
+        // Create plane vertices perpendicular to omega
+        const planeSize = 220;
+        
+        // Two perpendicular vectors to omega (in the plane)
+        // If omega = [ox, oy, oz], we need two perpendicular vectors
+        const perp1 = [-omega3D[1], omega3D[0], 0];  // perpendicular in x-y plane
+        const perp1_len = Math.sqrt(perp1[0]*perp1[0] + perp1[1]*perp1[1] + perp1[2]*perp1[2]);
+        const perp1_norm = [perp1[0]/perp1_len, perp1[1]/perp1_len, perp1[2]/perp1_len];
+        
+        // Second perpendicular: omega × perp1
+        const perp2 = [
+            omega3D[1] * perp1_norm[2] - omega3D[2] * perp1_norm[1],
+            omega3D[2] * perp1_norm[0] - omega3D[0] * perp1_norm[2],
+            omega3D[0] * perp1_norm[1] - omega3D[1] * perp1_norm[0]
+        ];
+        
+        const planeVertices3D = [
+            [
+                planeCenter3D[0] - planeSize/2 * perp1_norm[0] - planeSize/2 * perp2[0],
+                planeCenter3D[1] - planeSize/2 * perp1_norm[1] - planeSize/2 * perp2[1],
+                planeCenter3D[2] - planeSize/2 * perp1_norm[2] - planeSize/2 * perp2[2]
+            ],
+            [
+                planeCenter3D[0] + planeSize/2 * perp1_norm[0] - planeSize/2 * perp2[0],
+                planeCenter3D[1] + planeSize/2 * perp1_norm[1] - planeSize/2 * perp2[1],
+                planeCenter3D[2] + planeSize/2 * perp1_norm[2] - planeSize/2 * perp2[2]
+            ],
+            [
+                planeCenter3D[0] + planeSize/2 * perp1_norm[0] + planeSize/2 * perp2[0],
+                planeCenter3D[1] + planeSize/2 * perp1_norm[1] + planeSize/2 * perp2[1],
+                planeCenter3D[2] + planeSize/2 * perp1_norm[2] + planeSize/2 * perp2[2]
+            ],
+            [
+                planeCenter3D[0] - planeSize/2 * perp1_norm[0] + planeSize/2 * perp2[0],
+                planeCenter3D[1] - planeSize/2 * perp1_norm[1] + planeSize/2 * perp2[1],
+                planeCenter3D[2] - planeSize/2 * perp1_norm[2] + planeSize/2 * perp2[2]
+            ]
+        ];
+        
+        const planeVertices2D = planeVertices3D.map(v => project3D(v[0], v[1], v[2]));
+        
+        // Draw cube edges
+        function drawEdge(i, j, style = 'solid') {
+            ctx.beginPath();
+            ctx.moveTo(projected[i].x, projected[i].y);
+            ctx.lineTo(projected[j].x, projected[j].y);
+            
+            if (style === 'dashed') {
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = '#95a5a6';
+                ctx.lineWidth = 2;
+            } else {
+                ctx.setLineDash([]);
+                ctx.strokeStyle = '#34495e';
+                ctx.lineWidth = 2.5;
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        
+        // Draw hidden edges (dashed)
+        drawEdge(0, 3, 'dashed');
+        drawEdge(3, 7, 'dashed');
+        drawEdge(7, 4, 'dashed');
+        drawEdge(4, 0, 'dashed');
+        
+        // Draw visible bottom edges
+        drawEdge(0, 1, 'solid');
+        drawEdge(1, 2, 'solid');
+        drawEdge(2, 3, 'solid');
+        
+        // Draw vertical edges
+        drawEdge(1, 5, 'solid');
+        drawEdge(2, 6, 'solid');
+        
+        // Draw top edges
+        drawEdge(4, 5, 'solid');
+        drawEdge(5, 6, 'solid');
+        drawEdge(6, 7, 'solid');
+        
+        // Draw and shade top surface (ds)
+        ctx.beginPath();
+        ctx.moveTo(projected[4].x, projected[4].y);
+        ctx.lineTo(projected[5].x, projected[5].y);
+        ctx.lineTo(projected[6].x, projected[6].y);
+        ctx.lineTo(projected[7].x, projected[7].y);
+        ctx.closePath();
+        
+        const gradient = ctx.createLinearGradient(
+            projected[4].x, projected[4].y,
+            projected[6].x, projected[6].y
+        );
+        gradient.addColorStop(0, 'rgba(52, 152, 219, 0.3)');
+        gradient.addColorStop(1, 'rgba(52, 152, 219, 0.5)');
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        ctx.strokeStyle = '#34495e';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Label ds
+        const dsLabelPos = {
+            x: (projected[4].x + projected[6].x) / 2,
+            y: (projected[4].y + projected[6].y) / 2
+        };
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = 'bold italic 28px Times New Roman';
+        ctx.fillText('ds', dsLabelPos.x - 15, dsLabelPos.y + 10);
+        
+        // Draw the perpendicular plane
+        ctx.beginPath();
+        ctx.moveTo(planeVertices2D[0].x, planeVertices2D[0].y);
+        ctx.lineTo(planeVertices2D[1].x, planeVertices2D[1].y);
+        ctx.lineTo(planeVertices2D[2].x, planeVertices2D[2].y);
+        ctx.lineTo(planeVertices2D[3].x, planeVertices2D[3].y);
+        ctx.closePath();
+        
+        ctx.fillStyle = 'rgba(220, 220, 220, 0.5)';
+        ctx.fill();
+        
+        // Grid on plane
+        ctx.strokeStyle = 'rgba(180, 180, 180, 0.3)';
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 5; i++) {
+            const t = i / 5;
+            ctx.beginPath();
+            ctx.moveTo(
+                planeVertices2D[0].x + t * (planeVertices2D[1].x - planeVertices2D[0].x),
+                planeVertices2D[0].y + t * (planeVertices2D[1].y - planeVertices2D[0].y)
+            );
+            ctx.lineTo(
+                planeVertices2D[3].x + t * (planeVertices2D[2].x - planeVertices2D[3].x),
+                planeVertices2D[3].y + t * (planeVertices2D[2].y - planeVertices2D[3].y)
+            );
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(
+                planeVertices2D[0].x + t * (planeVertices2D[3].x - planeVertices2D[0].x),
+                planeVertices2D[0].y + t * (planeVertices2D[3].y - planeVertices2D[0].y)
+            );
+            ctx.lineTo(
+                planeVertices2D[1].x + t * (planeVertices2D[2].x - planeVertices2D[1].x),
+                planeVertices2D[1].y + t * (planeVertices2D[2].y - planeVertices2D[1].y)
+            );
+            ctx.stroke();
+        }
+        
+        ctx.strokeStyle = '#95a5a6';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(planeVertices2D[0].x, planeVertices2D[0].y);
+        ctx.lineTo(planeVertices2D[1].x, planeVertices2D[1].y);
+        ctx.lineTo(planeVertices2D[2].x, planeVertices2D[2].y);
+        ctx.lineTo(planeVertices2D[3].x, planeVertices2D[3].y);
+        ctx.closePath();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#7f8c8d';
+        ctx.font = 'bold italic 18px Arial';
+        ctx.fillText('Plane ⊥ Ω', planeVertices2D[2].x - 60, planeVertices2D[2].y + 30);
+        
+        // Draw projection rays
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(46, 204, 113, 0.4)';
+        ctx.lineWidth = 1.5;
+        
+        for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            ctx.moveTo(projected[4 + i].x, projected[4 + i].y);
+            ctx.lineTo(shadowCorners2D[i].x, shadowCorners2D[i].y);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        
+        // Draw the shadow ON the plane
+        ctx.beginPath();
+        ctx.moveTo(shadowCorners2D[0].x + 2, shadowCorners2D[0].y + 2);
+        ctx.lineTo(shadowCorners2D[1].x + 2, shadowCorners2D[1].y + 2);
+        ctx.lineTo(shadowCorners2D[2].x + 2, shadowCorners2D[2].y + 2);
+        ctx.lineTo(shadowCorners2D[3].x + 2, shadowCorners2D[3].y + 2);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(shadowCorners2D[0].x, shadowCorners2D[0].y);
+        ctx.lineTo(shadowCorners2D[1].x, shadowCorners2D[1].y);
+        ctx.lineTo(shadowCorners2D[2].x, shadowCorners2D[2].y);
+        ctx.lineTo(shadowCorners2D[3].x, shadowCorners2D[3].y);
+        ctx.closePath();
+        
+        const shadowGradient = ctx.createLinearGradient(
+            shadowCorners2D[0].x, shadowCorners2D[0].y,
+            shadowCorners2D[2].x, shadowCorners2D[2].y
+        );
+        shadowGradient.addColorStop(0, 'rgba(46, 204, 113, 0.85)');
+        shadowGradient.addColorStop(1, 'rgba(39, 174, 96, 0.9)');
+        ctx.fillStyle = shadowGradient;
+        ctx.fill();
+        
+        ctx.strokeStyle = '#27ae60';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        
+        // Label shadow
+        const shadowCenter = {
+            x: (shadowCorners2D[0].x + shadowCorners2D[2].x) / 2,
+            y: (shadowCorners2D[0].y + shadowCorners2D[2].y) / 2
+        };
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillRect(shadowCenter.x - 35, shadowCenter.y - 22, 120, 50);
+        
+        ctx.fillStyle = '#27ae60';
+        ctx.font = 'bold italic 24px Times New Roman';
+        ctx.fillText('ds', shadowCenter.x - 30, shadowCenter.y - 2);
+        ctx.font = 'bold 18px Times New Roman';
+        ctx.fillText('Ω', shadowCenter.x - 2, shadowCenter.y + 5);
+        ctx.font = 'bold 15px Arial';
+        ctx.fillText('= ds cos(60°)', shadowCenter.x - 30, shadowCenter.y + 20);
+        
+        // Draw normal vector
+        const normalBase = dsLabelPos;
+        const normalLength = 90;
+        const nx = normalBase.x;
+        const ny = normalBase.y + normalLength * Math.sin(normalAngle);
+        
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(normalBase.x, normalBase.y);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+        
+        // Arrowhead
+        const arrowSize = 12;
+        ctx.beginPath();
+        ctx.moveTo(nx, ny);
+        ctx.lineTo(nx - arrowSize * Math.cos(normalAngle - 0.4), ny - arrowSize * Math.sin(normalAngle - 0.4));
+        ctx.moveTo(nx, ny);
+        ctx.lineTo(nx - arrowSize * Math.cos(normalAngle + 0.4), ny - arrowSize * Math.sin(normalAngle + 0.4));
+        ctx.stroke();
+        
+        ctx.fillStyle = '#e74c3c';
+        ctx.font = 'bold italic 32px Times New Roman';
+        ctx.fillText('n', nx + 15, ny - 5);
+        
+        // Draw beam
+        const beamLength = 200;
+        const endX = normalBase.x;
+        const endY = normalBase.y;
+        const startX = endX - beamLength * Math.cos(omegaAngle);
+        const startY = endY - beamLength * Math.sin(omegaAngle);
+        
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.strokeStyle = '#f39c12';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        
+        const beamArrowSize = 16;
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - beamArrowSize * Math.cos(omegaAngle - 0.35), endY - beamArrowSize * Math.sin(omegaAngle - 0.35));
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - beamArrowSize * Math.cos(omegaAngle + 0.35), endY - beamArrowSize * Math.sin(omegaAngle + 0.35));
+        ctx.stroke();
+        
+        ctx.fillStyle = '#f39c12';
+        ctx.font = 'bold italic 36px Times New Roman';
+        ctx.fillText('Ω', startX + (endX - startX) * 0.25 - 30, startY + (endY - startY) * 0.25);
+        
+        // Draw angle arc
+        const arcRadius = 55;
+        ctx.beginPath();
+        ctx.arc(normalBase.x, normalBase.y, arcRadius, omegaAngle, normalAngle, false);
+        ctx.strokeStyle = '#9b59b6';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        ctx.fillStyle = '#9b59b6';
+        ctx.font = 'bold italic 32px Times New Roman';
+        const thetaAngle = (normalAngle + omegaAngle) / 2;
+        ctx.fillText('θ', 
+            normalBase.x + (arcRadius + 25) * Math.cos(thetaAngle) - 8,
+            normalBase.y + (arcRadius + 25) * Math.sin(thetaAngle) + 12
+        );
+        
+        ctx.fillStyle = 'rgba(155, 89, 182, 0.15)';
+        ctx.fillRect(normalBase.x + 50, normalBase.y - 100, 85, 35);
+        ctx.strokeStyle = '#9b59b6';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(normalBase.x + 50, normalBase.y - 100, 85, 35);
+        
+        ctx.fillStyle = '#9b59b6';
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText('θ = 60°', normalBase.x + 58, normalBase.y - 73);
+        
+    </script>
+</body>
+</html>

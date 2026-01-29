@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Phase Space Element Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #81c784;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #0a0a15;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-group {
+            margin: 15px 0;
+        }
+        
+        label {
+            display: inline-block;
+            width: 200px;
+            color: #b0b0b0;
+            font-size: 0.95em;
+        }
+        
+        input[type="range"] {
+            width: 250px;
+            vertical-align: middle;
+        }
+        
+        .value-display {
+            display: inline-block;
+            width: 100px;
+            text-align: right;
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+        
+        .legend {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .legend-item {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            margin-right: 15px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .math-formula {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            text-align: center;
+            font-size: 1.1em;
+            color: #ffeb3b;
+            border-left: 4px solid #4fc3f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Photon Phase Space Element (dn)</h1>
+        <div class="subtitle">Radiative Transfer Theory</div>
+        
+        <div class="math-formula">
+            dn = number of photons in d³r⃗ at r⃗, traveling in dΩ about Ω̂, with frequency in (ν, ν+dν), at time t
+        </div>
+        
+        <canvas id="canvas" width="900" height="700"></canvas>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>Volume element size (dr):</label>
+                <input type="range" id="volumeSize" min="20" max="80" value="50" step="5">
+                <span class="value-display" id="volumeValue">50</span>
+            </div>
+            <div class="control-group">
+                <label>Solid angle (dΩ):</label>
+                <input type="range" id="solidAngle" min="10" max="60" value="30" step="5">
+                <span class="value-display" id="solidAngleValue">30°</span>
+            </div>
+            <div class="control-group">
+                <label>Direction angle (θ):</label>
+                <input type="range" id="directionAngle" min="0" max="360" value="45" step="5">
+                <span class="value-display" id="directionValue">45°</span>
+            </div>
+            <div class="control-group">
+                <label>Frequency range (dν):</label>
+                <input type="range" id="freqRange" min="5" max="40" value="20" step="5">
+                <span class="value-display" id="freqValue">20</span>
+            </div>
+            <div class="control-group">
+                <label>Number of photons:</label>
+                <input type="range" id="numPhotons" min="10" max="100" value="40" step="5">
+                <span class="value-display" id="photonValue">40</span>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <h3 style="color: #4fc3f7; margin-top: 0;">Components:</h3>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(79, 195, 247, 0.3); border-color: #4fc3f7;"></div>
+                <span><strong>d³r⃗</strong> - Volume element around position r⃗</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(255, 235, 59, 0.3); border-color: #ffeb3b;"></div>
+                <span><strong>dΩ</strong> - Solid angle cone showing allowed directions around Ω̂</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(129, 199, 132, 0.5);"></div>
+                <span><strong>Photons</strong> - Particles with frequency ν ∈ (ν, ν+dν)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(255, 64, 129, 0.8);"></div>
+                <span><strong>Ω̂</strong> - Central direction vector</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Control elements
+        const volumeSlider = document.getElementById('volumeSize');
+        const solidAngleSlider = document.getElementById('solidAngle');
+        const directionSlider = document.getElementById('directionAngle');
+        const freqSlider = document.getElementById('freqRange');
+        const photonSlider = document.getElementById('numPhotons');
+        
+        const volumeValue = document.getElementById('volumeValue');
+        const solidAngleValue = document.getElementById('solidAngleValue');
+        const directionValue = document.getElementById('directionValue');
+        const freqValue = document.getElementById('freqValue');
+        const photonValue = document.getElementById('photonValue');
+        
+        let animationFrame = 0;
+        
+        class Photon {
+            constructor(x, y, z, angle, spread) {
+                this.x = x + (Math.random() - 0.5) * 40;
+                this.y = y + (Math.random() - 0.5) * 40;
+                this.z = z + (Math.random() - 0.5) * 40;
+                
+                const angleVariation = (Math.random() - 0.5) * spread;
+                this.angle = angle + angleVariation;
+                this.speed = 2 + Math.random();
+                this.size = 2 + Math.random() * 2;
+                this.brightness = 0.6 + Math.random() * 0.4;
+                this.phase = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.phase += 0.1;
+            }
+            
+            draw(ctx, centerX, centerY) {
+                const screenX = centerX + this.x + this.z * 0.3;
+                const screenY = centerY + this.y + this.z * 0.3;
+                
+                const pulse = Math.sin(this.phase) * 0.3 + 0.7;
+                const alpha = this.brightness * pulse;
+                
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, this.size, 0, Math.PI * 2);
+                const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, this.size * 2);
+                gradient.addColorStop(0, `rgba(129, 199, 132, ${alpha})`);
+                gradient.addColorStop(0.5, `rgba(129, 199, 132, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(129, 199, 132, 0)`);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        let photons = [];
+        
+        function initPhotons() {
+            photons = [];
+            const num = parseInt(photonSlider.value);
+            const angle = parseFloat(directionSlider.value) * Math.PI / 180;
+            const spread = parseFloat(solidAngleSlider.value) * Math.PI / 180;
+            
+            for (let i = 0; i < num; i++) {
+                photons.push(new Photon(0, 0, 0, angle, spread));
+            }
+        }
+        
+        function drawVolumeElement(centerX, centerY, size) {
+            const depth = size * 0.6;
+            
+            // Draw cube representing d³r
+            ctx.strokeStyle = 'rgba(79, 195, 247, 0.6)';
+            ctx.fillStyle = 'rgba(79, 195, 247, 0.1)';
+            ctx.lineWidth = 2;
+            
+            // Front face
+            ctx.beginPath();
+            ctx.rect(centerX - size/2, centerY - size/2, size, size);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Back face (with depth offset)
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)';
+            const offset = depth * 0.5;
+            ctx.rect(centerX - size/2 + offset, centerY - size/2 + offset, size, size);
+            ctx.stroke();
+            
+            // Connect corners
+            ctx.beginPath();
+            ctx.moveTo(centerX - size/2, centerY - size/2);
+            ctx.lineTo(centerX - size/2 + offset, centerY - size/2 + offset);
+            ctx.moveTo(centerX + size/2, centerY - size/2);
+            ctx.lineTo(centerX + size/2 + offset, centerY - size/2 + offset);
+            ctx.moveTo(centerX - size/2, centerY + size/2);
+            ctx.lineTo(centerX - size/2 + offset, centerY + size/2 + offset);
+            ctx.moveTo(centerX + size/2, centerY + size/2);
+            ctx.lineTo(centerX + size/2 + offset, centerY + size/2 + offset);
+            ctx.stroke();
+            
+            // Label
+            ctx.fillStyle = '#4fc3f7';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('d³r⃗', centerX - size/2 - 40, centerY - size/2 - 10);
+        }
+        
+        function drawSolidAngle(centerX, centerY, angle, spread, length) {
+            // Draw cone representing dΩ
+            const halfSpread = spread / 2;
+            
+            // Central direction
+            const endX = centerX + Math.cos(angle) * length;
+            const endY = centerY + Math.sin(angle) * length;
+            
+            // Cone edges
+            const edge1X = centerX + Math.cos(angle - halfSpread) * length;
+            const edge1Y = centerY + Math.sin(angle - halfSpread) * length;
+            const edge2X = centerX + Math.cos(angle + halfSpread) * length;
+            const edge2Y = centerY + Math.sin(angle + halfSpread) * length;
+            
+            // Fill cone
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(edge1X, edge1Y);
+            ctx.arc(centerX, centerY, length, angle - halfSpread, angle + halfSpread);
+            ctx.lineTo(centerX, centerY);
+            ctx.fillStyle = 'rgba(255, 235, 59, 0.15)';
+            ctx.fill();
+            
+            // Draw cone edges
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(edge1X, edge1Y);
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(edge2X, edge2Y);
+            ctx.arc(centerX, centerY, length, angle - halfSpread, angle + halfSpread);
+            ctx.strokeStyle = 'rgba(255, 235, 59, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Central direction arrow (Ω̂)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = 'rgba(255, 64, 129, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Arrowhead
+            const arrowSize = 12;
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - arrowSize * Math.cos(angle - 0.3), endY - arrowSize * Math.sin(angle - 0.3));
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - arrowSize * Math.cos(angle + 0.3), endY - arrowSize * Math.sin(angle + 0.3));
+            ctx.stroke();
+            
+            // Labels
+            ctx.fillStyle = '#ffeb3b';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('dΩ', endX + 20, endY - 30);
+            
+            ctx.fillStyle = '#ff4081';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText('Ω̂', endX + 10, endY + 10);
+        }
+        
+        function drawFrequencyIndicator(x, y, range) {
+            const barWidth = 200;
+            const barHeight = 30;
+            
+            // Background
+            ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
+            ctx.fillRect(x, y, barWidth, barHeight);
+            
+            // Frequency range
+            const rangeWidth = (range / 40) * barWidth;
+            const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
+            gradient.addColorStop(0, 'rgba(138, 43, 226, 0.6)');
+            gradient.addColorStop(0.5, 'rgba(75, 0, 130, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, y, rangeWidth, barHeight);
+            
+            // Border
+            ctx.strokeStyle = 'rgba(200, 200, 200, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, barWidth, barHeight);
+            
+            // Labels
+            ctx.fillStyle = '#e0e0e0';
+            ctx.font = '12px Arial';
+            ctx.fillText('ν', x - 20, y + 20);
+            ctx.fillText('ν + dν', x + barWidth + 10, y + 20);
+            
+            ctx.fillStyle = '#b19cd9';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('Frequency Range', x + barWidth/2 - 60, y - 10);
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#0a0a15';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2 + 50;
+            const volumeSize = parseFloat(volumeSlider.value);
+            const solidAngle = parseFloat(solidAngleSlider.value) * Math.PI / 180;
+            const directionAngle = parseFloat(directionSlider.value) * Math.PI / 180;
+            const freqRange = parseFloat(freqSlider.value);
+            
+            // Draw volume element
+            drawVolumeElement(centerX, centerY, volumeSize);
+            
+            // Update and draw photons
+            photons.forEach(photon => {
+                photon.update();
+                photon.draw(ctx, centerX, centerY);
+            });
+            
+            // Reset photons that go too far
+            photons = photons.filter(p => {
+                const dist = Math.sqrt(p.x * p.x + p.y * p.y);
+                return dist < 400;
+            });
+            
+            // Add new photons to maintain count
+            while (photons.length < parseInt(photonSlider.value)) {
+                photons.push(new Photon(0, 0, 0, directionAngle, solidAngle));
+            }
+            
+            // Draw solid angle cone
+            drawSolidAngle(centerX, centerY, directionAngle, solidAngle, 250);
+            
+            // Draw frequency indicator
+            drawFrequencyIndicator(50, 50, freqRange);
+            
+            // Draw info text
+            ctx.fillStyle = '#4fc3f7';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('dn = ' + photonSlider.value + ' photons', 50, canvas.height - 30);
+            
+            animationFrame++;
+            requestAnimationFrame(draw);
+        }
+        
+        // Event listeners
+        volumeSlider.addEventListener('input', (e) => {
+            volumeValue.textContent = e.target.value;
+        });
+        
+        solidAngleSlider.addEventListener('input', (e) => {
+            solidAngleValue.textContent = e.target.value + '°';
+            initPhotons();
+        });
+        
+        directionSlider.addEventListener('input', (e) => {
+            directionValue.textContent = e.target.value + '°';
+            initPhotons();
+        });
+        
+        freqSlider.addEventListener('input', (e) => {
+            freqValue.textContent = e.target.value;
+        });
+        
+        photonSlider.addEventListener('input', (e) => {
+            photonValue.textContent = e.target.value;
+        });
+        
+        // Initialize
+        initPhotons();
+        draw();
+    </script>
+</body>
+</html>

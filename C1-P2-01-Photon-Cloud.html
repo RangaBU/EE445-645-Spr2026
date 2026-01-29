@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Cloud in Volume V at Time t</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #64b5f6;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+            text-shadow: 0 0 20px rgba(100, 181, 246, 0.5);
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #ffb74d;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            font-style: italic;
+        }
+        
+        .time-display {
+            text-align: center;
+            background: rgba(255, 87, 34, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid rgba(255, 87, 34, 0.5);
+        }
+        
+        .time-display h2 {
+            margin: 0;
+            color: #ff5722;
+            font-size: 1.5em;
+        }
+        
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #000000;
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(100, 181, 246, 0.3);
+            cursor: grab;
+        }
+        
+        canvas:active {
+            cursor: grabbing;
+        }
+        
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 25px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .control-group {
+            margin: 10px 0;
+        }
+        
+        label {
+            display: inline-block;
+            width: 200px;
+            color: #b0b0b0;
+            font-size: 0.95em;
+        }
+        
+        input[type="range"] {
+            width: 180px;
+            vertical-align: middle;
+        }
+        
+        .value-display {
+            display: inline-block;
+            width: 80px;
+            text-align: right;
+            color: #64b5f6;
+            font-weight: bold;
+        }
+        
+        .spectrum-bar {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .spectrum-bar h3 {
+            color: #64b5f6;
+            margin-top: 0;
+            text-align: center;
+        }
+        
+        .spectrum-gradient {
+            height: 40px;
+            border-radius: 5px;
+            background: linear-gradient(to right, 
+                #ff0000 0%,    /* Red */
+                #ff7f00 16%,   /* Orange */
+                #ffff00 33%,   /* Yellow */
+                #00ff00 50%,   /* Green */
+                #0000ff 66%,   /* Blue */
+                #4b0082 83%,   /* Indigo */
+                #9400d3 100%   /* Violet */
+            );
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .spectrum-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.85em;
+            color: #888;
+        }
+        
+        .info-panel {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .info-panel h3 {
+            color: #64b5f6;
+            margin-top: 0;
+        }
+        
+        .info-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            border-left: 3px solid #64b5f6;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        .button-group {
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Photon Cloud in Volume V</h1>
+        <div class="subtitle">Frozen snapshot at time t</div>
+        
+        <div class="time-display">
+            <h2>⏱ Time = t (frozen) ⏱</h2>
+            <p style="margin: 5px 0 0 0; color: #ffab91;">All photons shown simultaneously at a single instant</p>
+        </div>
+        
+        <canvas id="canvas" width="1000" height="700"></canvas>
+        
+        <div class="button-group">
+            <button onclick="resetView()">Reset View</button>
+            <button onclick="randomize()">Randomize Photons</button>
+            <button onclick="toggleVolumeBoundary()">Toggle Volume Boundary</button>
+        </div>
+        
+        <div class="controls">
+            <h3 style="color: #64b5f6; margin-top: 0;">Cloud Parameters</h3>
+            <div class="control-row">
+                <div>
+                    <div class="control-group">
+                        <label>Number of Photons:</label>
+                        <input type="range" id="numPhotons" min="100" max="1500" value="400" step="50">
+                        <span class="value-display" id="photonValue">400</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Volume Size:</label>
+                        <input type="range" id="volumeSize" min="150" max="350" value="250" step="25">
+                        <span class="value-display" id="volumeValue">250</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Photon Size:</label>
+                        <input type="range" id="photonSize" min="2" max="8" value="5" step="0.5">
+                        <span class="value-display" id="sizeValue">5</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="control-group">
+                        <label>Rotation X:</label>
+                        <input type="range" id="rotationX" min="0" max="360" value="30" step="5">
+                        <span class="value-display" id="rotXValue">30°</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Rotation Y:</label>
+                        <input type="range" id="rotationY" min="0" max="360" value="45" step="5">
+                        <span class="value-display" id="rotYValue">45°</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Rotation Z:</label>
+                        <input type="range" id="rotationZ" min="0" max="360" value="0" step="5">
+                        <span class="value-display" id="rotZValue">0°</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="spectrum-bar">
+            <h3>Electromagnetic Spectrum (Photon Frequency Color Map)</h3>
+            <div class="spectrum-gradient"></div>
+            <div class="spectrum-labels">
+                <span>Low Frequency<br>(Red/IR)</span>
+                <span>Mid Frequency<br>(Yellow/Green)</span>
+                <span>High Frequency<br>(Blue/Violet/UV)</span>
+            </div>
+        </div>
+        
+        <div class="info-panel">
+            <h3>Visualization Details</h3>
+            <div class="info-item">
+                <strong>Volume V:</strong> Wireframe cube containing the photon cloud
+            </div>
+            <div class="info-item">
+                <strong>Photon Colors:</strong> Each photon's color represents its frequency ν (red=low, violet=high)
+            </div>
+            <div class="info-item">
+                <strong>Frozen Time:</strong> This is a snapshot at time t - all photons shown at their positions simultaneously
+            </div>
+            <div class="info-item">
+                <strong>3D View:</strong> Drag the canvas to rotate. Depth is shown by size and brightness.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let photons = [];
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        let showVolumeBoundary = true;
+        
+        class Photon {
+            constructor(volumeSize) {
+                this.x = (Math.random() - 0.5) * volumeSize;
+                this.y = (Math.random() - 0.5) * volumeSize;
+                this.z = (Math.random() - 0.5) * volumeSize;
+                this.frequency = Math.random();
+            }
+            
+            getColor() {
+                // Rainbow spectrum: 0=red, 1=violet
+                const hue = this.frequency * 280;
+                return `hsl(${hue}, 100%, 65%)`;
+            }
+            
+            draw(ctx, centerX, centerY, rotX, rotY, rotZ, baseSize) {
+                // Apply 3D rotations
+                const angleX = rotX * Math.PI / 180;
+                const angleY = rotY * Math.PI / 180;
+                const angleZ = rotZ * Math.PI / 180;
+                
+                let x = this.x, y = this.y, z = this.z;
+                
+                // Rotate around X axis
+                let y1 = y * Math.cos(angleX) - z * Math.sin(angleX);
+                let z1 = y * Math.sin(angleX) + z * Math.cos(angleX);
+                
+                // Rotate around Y axis
+                let x2 = x * Math.cos(angleY) + z1 * Math.sin(angleY);
+                let z2 = -x * Math.sin(angleY) + z1 * Math.cos(angleY);
+                
+                // Rotate around Z axis
+                let x3 = x2 * Math.cos(angleZ) - y1 * Math.sin(angleZ);
+                let y3 = x2 * Math.sin(angleZ) + y1 * Math.cos(angleZ);
+                
+                // Perspective projection
+                const perspective = 700;
+                const scale = perspective / (perspective + z2);
+                const screenX = centerX + x3 * scale;
+                const screenY = centerY + y3 * scale;
+                
+                // Size and brightness based on depth
+                const size = baseSize * scale;
+                const brightness = Math.max(0.5, scale);
+                
+                const color = this.getColor();
+                
+                // Draw bright core
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.globalAlpha = brightness;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                
+                // Draw glow
+                const gradient = ctx.createRadialGradient(
+                    screenX, screenY, 0,
+                    screenX, screenY, size * 3
+                );
+                gradient.addColorStop(0, color.replace('65%)', '65%, 0.9)'));
+                gradient.addColorStop(0.4, color.replace('65%)', '65%, 0.4)'));
+                gradient.addColorStop(1, color.replace('65%)', '65%, 0)'));
+                
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, size * 3, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = brightness * 0.8;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                
+                return z2;
+            }
+        }
+        
+        function drawVolumeCube(centerX, centerY, size, rotX, rotY, rotZ) {
+            if (!showVolumeBoundary) return;
+            
+            const angleX = rotX * Math.PI / 180;
+            const angleY = rotY * Math.PI / 180;
+            const angleZ = rotZ * Math.PI / 180;
+            
+            // 8 vertices of cube
+            const vertices = [
+                [-size/2, -size/2, -size/2], [size/2, -size/2, -size/2],
+                [size/2, size/2, -size/2], [-size/2, size/2, -size/2],
+                [-size/2, -size/2, size/2], [size/2, -size/2, size/2],
+                [size/2, size/2, size/2], [-size/2, size/2, size/2]
+            ];
+            
+            // Apply rotations and perspective to each vertex
+            const projected = vertices.map(v => {
+                let [x, y, z] = v;
+                
+                // Rotate X
+                let y1 = y * Math.cos(angleX) - z * Math.sin(angleX);
+                let z1 = y * Math.sin(angleX) + z * Math.cos(angleX);
+                
+                // Rotate Y
+                let x2 = x * Math.cos(angleY) + z1 * Math.sin(angleY);
+                let z2 = -x * Math.sin(angleY) + z1 * Math.cos(angleY);
+                
+                // Rotate Z
+                let x3 = x2 * Math.cos(angleZ) - y1 * Math.sin(angleZ);
+                let y3 = x2 * Math.sin(angleZ) + y1 * Math.cos(angleZ);
+                
+                // Perspective
+                const perspective = 700;
+                const scale = perspective / (perspective + z2);
+                
+                return {
+                    x: centerX + x3 * scale,
+                    y: centerY + y3 * scale,
+                    z: z2
+                };
+            });
+            
+            // Draw 12 edges
+            const edges = [
+                [0,1], [1,2], [2,3], [3,0],  // back face
+                [4,5], [5,6], [6,7], [7,4],  // front face
+                [0,4], [1,5], [2,6], [3,7]   // connecting edges
+            ];
+            
+            ctx.strokeStyle = 'rgba(100, 181, 246, 0.4)';
+            ctx.lineWidth = 2;
+            
+            edges.forEach(([i, j]) => {
+                ctx.beginPath();
+                ctx.moveTo(projected[i].x, projected[i].y);
+                ctx.lineTo(projected[j].x, projected[j].y);
+                ctx.stroke();
+            });
+            
+            // Draw vertices
+            ctx.fillStyle = 'rgba(100, 181, 246, 0.6)';
+            projected.forEach(v => {
+                ctx.beginPath();
+                ctx.arc(v.x, v.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Label
+            ctx.fillStyle = '#64b5f6';
+            ctx.font = 'bold 18px Arial';
+            ctx.shadowColor = 'rgba(100, 181, 246, 0.8)';
+            ctx.shadowBlur = 10;
+            ctx.fillText('Volume V', projected[6].x + 15, projected[6].y - 10);
+            ctx.shadowBlur = 0;
+        }
+        
+        function initPhotons() {
+            photons = [];
+            const num = parseInt(document.getElementById('numPhotons').value);
+            const volumeSize = parseFloat(document.getElementById('volumeSize').value);
+            
+            for (let i = 0; i < num; i++) {
+                photons.push(new Photon(volumeSize));
+            }
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const volumeSize = parseFloat(document.getElementById('volumeSize').value);
+            const rotX = parseFloat(document.getElementById('rotationX').value);
+            const rotY = parseFloat(document.getElementById('rotationY').value);
+            const rotZ = parseFloat(document.getElementById('rotationZ').value);
+            const baseSize = parseFloat(document.getElementById('photonSize').value);
+            
+            // Sort photons by depth (back to front)
+            const sorted = photons.map((p, i) => {
+                // Get z after rotation for sorting
+                const angleX = rotX * Math.PI / 180;
+                const angleY = rotY * Math.PI / 180;
+                let x = p.x, y = p.y, z = p.z;
+                let y1 = y * Math.cos(angleX) - z * Math.sin(angleX);
+                let z1 = y * Math.sin(angleX) + z * Math.cos(angleX);
+                let x2 = x * Math.cos(angleY) + z1 * Math.sin(angleY);
+                let z2 = -x * Math.sin(angleY) + z1 * Math.cos(angleY);
+                return { photon: p, depth: z2, index: i };
+            });
+            sorted.sort((a, b) => a.depth - b.depth);
+            
+            // Draw all photons (back to front)
+            sorted.forEach(({photon}) => {
+                photon.draw(ctx, centerX, centerY, rotX, rotY, rotZ, baseSize);
+            });
+            
+            // Draw volume cube last (on top for visibility)
+            drawVolumeCube(centerX, centerY, volumeSize, rotX, rotY, rotZ);
+            
+            // Display info
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText(`Photons: ${photons.length}`, 20, 30);
+            ctx.fillText(`Volume: ${volumeSize}³ units`, 20, 55);
+            ctx.fillText(`Time: t (frozen)`, 20, 80);
+        }
+        
+        function resetView() {
+            document.getElementById('rotationX').value = 30;
+            document.getElementById('rotationY').value = 45;
+            document.getElementById('rotationZ').value = 0;
+            document.getElementById('rotXValue').textContent = '30°';
+            document.getElementById('rotYValue').textContent = '45°';
+            document.getElementById('rotZValue').textContent = '0°';
+            draw();
+        }
+        
+        function randomize() {
+            initPhotons();
+            draw();
+        }
+        
+        function toggleVolumeBoundary() {
+            showVolumeBoundary = !showVolumeBoundary;
+            draw();
+        }
+        
+        // Set up event listeners for all controls
+        ['numPhotons', 'volumeSize', 'photonSize', 'rotationX', 'rotationY', 'rotationZ'].forEach(id => {
+            const element = document.getElementById(id);
+            element.addEventListener('input', (e) => {
+                // Update display value
+                let valueId = id + 'Value';
+                if (id === 'numPhotons') valueId = 'photonValue';
+                if (id === 'volumeSize') valueId = 'volumeValue';
+                if (id === 'photonSize') valueId = 'sizeValue';
+                if (id === 'rotationX') valueId = 'rotXValue';
+                if (id === 'rotationY') valueId = 'rotYValue';
+                if (id === 'rotationZ') valueId = 'rotZValue';
+                
+                const suffix = id.includes('rotation') ? '°' : '';
+                document.getElementById(valueId).textContent = e.target.value + suffix;
+                
+                // Reinitialize photons if needed
+                if (id === 'numPhotons' || id === 'volumeSize') {
+                    initPhotons();
+                }
+                
+                draw();
+            });
+        });
+        
+        // Mouse drag to rotate
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                
+                const rotY = document.getElementById('rotationY');
+                const rotX = document.getElementById('rotationX');
+                
+                const newY = (parseFloat(rotY.value) + deltaX * 0.5) % 360;
+                const newX = (parseFloat(rotX.value) + deltaY * 0.5) % 360;
+                
+                rotY.value = newY;
+                rotX.value = newX;
+                
+                document.getElementById('rotYValue').textContent = Math.round(newY) + '°';
+                document.getElementById('rotXValue').textContent = Math.round(newX) + '°';
+                
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                
+                draw();
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+        
+        // Initialize and draw
+        initPhotons();
+        draw();
+    </script>
+</body>
+</html>
