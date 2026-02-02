@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emission Coefficient Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.9;
+            max-width: 420px;
+            border: 1px solid rgba(74, 158, 255, 0.3);
+        }
+        .title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #4a9eff;
+            margin-bottom: 12px;
+        }
+        .formula {
+            font-family: 'Times New Roman', serif;
+            margin: 12px 0;
+            padding: 12px;
+            background: rgba(74, 158, 255, 0.15);
+            border-radius: 6px;
+            font-size: 15px;
+            border-left: 3px solid #4a9eff;
+        }
+        .units {
+            font-size: 13px;
+            color: #88ccff;
+            margin-top: 8px;
+            font-family: monospace;
+        }
+        .param-list {
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        .param-item {
+            margin: 6px 0;
+            padding-left: 8px;
+        }
+        .param-symbol {
+            font-weight: bold;
+            color: #4a9eff;
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+        }
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.8;
+            border: 1px solid rgba(74, 158, 255, 0.3);
+        }
+        .legend-title {
+            font-weight: bold;
+            color: #4a9eff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .color-gradient {
+            height: 20px;
+            background: linear-gradient(to right, #ff0000, #ff8800, #ffff00, #00ff00, #0088ff);
+            border-radius: 4px;
+            margin: 8px 0;
+            border: 1px solid #666;
+        }
+        .gradient-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        .legend-item {
+            margin: 8px 0;
+        }
+        .legend-symbol {
+            display: inline-block;
+            width: 20px;
+            text-align: center;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 18px;
+            border-radius: 10px;
+            font-size: 13px;
+            border: 1px solid rgba(74, 158, 255, 0.3);
+        }
+        button {
+            background: linear-gradient(135deg, #4a9eff 0%, #3a7ed8 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 4px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: linear-gradient(135deg, #5aafff 0%, #4a8ee8 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .slider-container {
+            margin: 12px 0;
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4a9eff 0%, #3a7ed8 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(74, 158, 255, 0.5);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4a9eff 0%, #3a7ed8 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(74, 158, 255, 0.5);
+        }
+        .value-display {
+            color: #4a9eff;
+            font-weight: bold;
+        }
+        #stats {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(74, 158, 255, 0.3);
+            font-size: 12px;
+            color: #88ccff;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div class="title">Photon Emission in Medium</div>
+        <div style="font-size: 12px; color: #aaa; margin-bottom: 12px;">
+            Photons introduced through external and/or internal sources
+        </div>
+        <div class="formula">
+            <div style="text-align: center; font-size: 16px;">
+                d<i>N</i><sub>E</sub>(<i><b>r</b></i>, ν', <b>Ω'</b>, <i>t</i>) = <i>q</i>(<i><b>r</b></i>, ν', <b>Ω'</b>, <i>t</i>) d<i><b>r</b></i> dν' d<b>Ω'</b> d<i>s</i>
+            </div>
+            <div class="units">
+                <strong>Emission Coefficient <i>q</i>:</strong><br>
+                Units: # m<sup>-3</sup> Hz<sup>-1</sup> sr<sup>-1</sup> m<sup>-1</sup><br>
+                <span style="font-size: 11px; color: #66aadd;">(per unit pathlength)</span>
+            </div>
+        </div>
+        
+        <div class="param-list">
+            <div style="font-weight: bold; margin-bottom: 8px; color: #4a9eff;">Parameters:</div>
+            <div class="param-item">
+                <span class="param-symbol"><b>r</b></span> – Position in volume d<i><b>r</b></i>
+            </div>
+            <div class="param-item">
+                <span class="param-symbol">ν'</span> – Emission frequency (interval ν' to ν' + dν')
+            </div>
+            <div class="param-item">
+                <span class="param-symbol"><b>Ω'</b></span> – Emission direction (solid angle d<b>Ω'</b>)
+            </div>
+            <div class="param-item">
+                <span class="param-symbol">t</span> – Time (interval <i>t</i> to <i>t</i> + d<i>t</i>)
+            </div>
+            <div class="param-item">
+                <span class="param-symbol">s</span> – Pathlength (interval <i>s</i> to <i>s</i> + d<i>s</i>)
+            </div>
+        </div>
+        
+        <div id="stats">
+            <strong>Simulation Stats:</strong><br>
+            Photons emitted: <span class="value-display">0</span><br>
+            Active photons: <span class="value-display" id="activeCount">0</span>
+        </div>
+    </div>
+    
+    <div id="legend">
+        <div class="legend-title">Frequency Spectrum (ν')</div>
+        <div class="color-gradient"></div>
+        <div class="gradient-labels">
+            <span>Low ν'</span>
+            <span>Medium</span>
+            <span>High ν'</span>
+        </div>
+        
+        <div style="margin-top: 15px;">
+            <div class="legend-title">Visual Elements:</div>
+            <div class="legend-item">
+                <span class="legend-symbol">🔷</span> Blue cube: Volume element d<i><b>r</b></i>
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol">⚫</span> Spheres: Emitted photons (d<i>N</i><sub>E</sub>)
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol">🎨</span> Color: Frequency ν'
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol">➜</span> Direction: Random <b>Ω'</b> (4π sr)
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol">━</span> Trail: Pathlength d<i>s</i>
+            </div>
+            <div class="legend-item">
+                <span class="legend-symbol">🎯</span> Cone: Differential solid angle d<b>Ω'</b>
+            </div>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div class="slider-container">
+            <div class="slider-label">
+                <span>Emission Rate (<i>q</i>)</span>
+                <span class="value-display" id="rateValue">50</span>
+            </div>
+            <input type="range" id="rateSlider" min="10" max="100" step="10" value="50">
+        </div>
+        <div style="margin-top: 15px;">
+            <button onclick="toggleAnimation()">⏯ Pause/Resume</button>
+            <button onclick="resetSimulation()">🔄 Reset</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer;
+        let volumeElement;
+        let photons = [];
+        let animationRunning = true;
+        let emissionRate = 50;
+        let totalEmitted = 0;
+        let frameCount = 0;
+        let solidAngleCones = [];
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a15);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(6, 5, 6);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Enhanced lighting
+            const ambientLight = new THREE.AmbientLight(0x404050, 1.2);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0xffffff, 1.2);
+            pointLight1.position.set(10, 10, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x6699ff, 0.6);
+            pointLight2.position.set(-10, -10, -10);
+            scene.add(pointLight2);
+
+            const pointLight3 = new THREE.PointLight(0xff9966, 0.4);
+            pointLight3.position.set(0, -10, 10);
+            scene.add(pointLight3);
+
+            // Create coordinate axes
+            createAxes();
+
+            // Create volume element (emitting region)
+            createVolumeElement();
+
+            // Event listeners
+            document.getElementById('rateSlider').addEventListener('input', function(e) {
+                emissionRate = parseInt(e.target.value);
+                document.getElementById('rateValue').textContent = emissionRate;
+            });
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Mouse controls for camera rotation
+            let mouseDown = false;
+            let mouseX = 0, mouseY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                mouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                mouseDown = false;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (mouseDown) {
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    const rotationSpeed = 0.01;
+                    const radius = Math.sqrt(
+                        camera.position.x * camera.position.x + 
+                        camera.position.z * camera.position.z
+                    );
+                    
+                    const angle = Math.atan2(camera.position.z, camera.position.x);
+                    const newAngle = angle - deltaX * rotationSpeed;
+                    
+                    camera.position.x = radius * Math.cos(newAngle);
+                    camera.position.z = radius * Math.sin(newAngle);
+                    camera.position.y += deltaY * rotationSpeed;
+                    camera.position.y = Math.max(1, Math.min(10, camera.position.y));
+                    
+                    camera.lookAt(0, 0, 0);
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                }
+            });
+        }
+
+        function createAxes() {
+            const axisLength = 5;
+            
+            // X-axis (red)
+            createArrow(new THREE.Vector3(0, 0, 0), new THREE.Vector3(axisLength, 0, 0), 0xff3333);
+            // Y-axis (green) 
+            createArrow(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, axisLength, 0), 0x33ff33);
+            // Z-axis (blue)
+            createArrow(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, axisLength), 0x3333ff);
+            
+            // Add axis labels
+            createAxisLabel('X', new THREE.Vector3(axisLength + 0.5, 0, 0), 0xff3333);
+            createAxisLabel('Y', new THREE.Vector3(0, axisLength + 0.5, 0), 0x33ff33);
+            createAxisLabel('Z', new THREE.Vector3(0, 0, axisLength + 0.5), 0x3333ff);
+        }
+
+        function createArrow(origin, direction, color) {
+            const length = direction.length();
+            const arrowHelper = new THREE.ArrowHelper(
+                direction.normalize(), 
+                origin, 
+                length, 
+                color,
+                0.3,
+                0.2
+            );
+            scene.add(arrowHelper);
+        }
+
+        function createAxisLabel(text, position, color) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 128;
+            canvas.height = 128;
+            
+            context.fillStyle = '#' + color.toString(16).padStart(6, '0');
+            context.font = 'Bold 90px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 64, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.position.copy(position);
+            sprite.scale.set(0.6, 0.6, 1);
+            scene.add(sprite);
+        }
+
+        function createVolumeElement() {
+            // Create a semi-transparent cube representing the volume element dr⃗
+            const size = 1.0;
+            const geometry = new THREE.BoxGeometry(size, size, size);
+            
+            // Wireframe edges
+            const edges = new THREE.EdgesGeometry(geometry);
+            const lineMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x4488ff, 
+                linewidth: 2 
+            });
+            const wireframe = new THREE.LineSegments(edges, lineMaterial);
+            
+            // Semi-transparent fill
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x4488ff,
+                transparent: true,
+                opacity: 0.15,
+                side: THREE.DoubleSide,
+                shininess: 100
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            
+            const group = new THREE.Group();
+            group.add(cube);
+            group.add(wireframe);
+            group.position.set(0, 0, 0);
+            
+            scene.add(group);
+            volumeElement = group;
+        }
+
+        function frequencyToColor(freq) {
+            // freq ranges from 0 (low frequency - red) to 1 (high frequency - blue)
+            if (freq < 0.25) {
+                // Red to Orange
+                const t = freq / 0.25;
+                return new THREE.Color().setRGB(1, t * 0.53, 0);
+            } else if (freq < 0.5) {
+                // Orange to Yellow
+                const t = (freq - 0.25) / 0.25;
+                return new THREE.Color().setRGB(1, 0.53 + t * 0.47, 0);
+            } else if (freq < 0.75) {
+                // Yellow to Green
+                const t = (freq - 0.5) / 0.25;
+                return new THREE.Color().setRGB(1 - t, 1, 0);
+            } else {
+                // Green to Blue
+                const t = (freq - 0.75) / 0.25;
+                return new THREE.Color().setRGB(0, 1 - t * 0.47, t);
+            }
+        }
+
+        function createSolidAngleCone(position, direction, color) {
+            // Create a small cone to represent differential solid angle dΩ'
+            const coneGeometry = new THREE.ConeGeometry(0.15, 0.5, 8);
+            const coneMaterial = new THREE.MeshBasicMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.3,
+                wireframe: true
+            });
+            const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+            
+            // Orient cone in direction of emission
+            cone.position.copy(position);
+            const axis = new THREE.Vector3(0, 1, 0);
+            cone.quaternion.setFromUnitVectors(axis, direction);
+            
+            cone.userData = {
+                age: 0,
+                maxAge: 30
+            };
+            
+            scene.add(cone);
+            solidAngleCones.push(cone);
+        }
+
+        function emitPhoton() {
+            // Random frequency ν' (between ν' and ν' + dν')
+            const frequency = Math.random();
+            const color = frequencyToColor(frequency);
+            
+            // Create photon sphere
+            const photonGeometry = new THREE.SphereGeometry(0.1, 12, 12);
+            const photonMaterial = new THREE.MeshPhongMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.95,
+                emissive: color,
+                emissiveIntensity: 0.3,
+                shininess: 100
+            });
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            
+            // Random position within volume element dr⃗ (at position r⃗)
+            const volumeSize = 0.7;
+            photon.position.x = (Math.random() - 0.5) * volumeSize;
+            photon.position.y = (Math.random() - 0.5) * volumeSize;
+            photon.position.z = (Math.random() - 0.5) * volumeSize;
+            
+            // Random direction Ω' for isotropic emission (over solid angle dΩ')
+            // Using spherical coordinates for uniform distribution on sphere
+            const theta = Math.acos(2 * Math.random() - 1);
+            const phi = Math.random() * 2 * Math.PI;
+            
+            const direction = new THREE.Vector3(
+                Math.sin(theta) * Math.cos(phi),
+                Math.cos(theta),
+                Math.sin(theta) * Math.sin(phi)
+            ).normalize();
+            
+            const speed = 0.05; // Speed represents ds/dt
+            
+            // Create cone to show differential solid angle dΩ'
+            createSolidAngleCone(photon.position.clone(), direction, color);
+            
+            // Create trail to represent pathlength ds
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailMaterial = new THREE.LineBasicMaterial({ 
+                color: color,
+                transparent: true,
+                opacity: 0.5,
+                linewidth: 2
+            });
+            const trail = new THREE.Line(trailGeometry, trailMaterial);
+            
+            photon.userData = {
+                velocity: direction.multiplyScalar(speed),
+                trail: trail,
+                trailPositions: [],
+                frequency: frequency,
+                age: 0,
+                pathlength: 0
+            };
+            
+            scene.add(photon);
+            scene.add(trail);
+            photons.push(photon);
+            totalEmitted++;
+        }
+
+        function updatePhotons() {
+            // Update photons
+            for (let i = photons.length - 1; i >= 0; i--) {
+                const photon = photons[i];
+                
+                // Move photon along pathlength ds
+                const displacement = photon.userData.velocity.clone();
+                photon.position.add(displacement);
+                photon.userData.age++;
+                photon.userData.pathlength += displacement.length();
+                
+                // Update trail to show pathlength
+                photon.userData.trailPositions.push(photon.position.clone());
+                if (photon.userData.trailPositions.length > 25) {
+                    photon.userData.trailPositions.shift();
+                }
+                
+                // Update trail geometry
+                const positions = new Float32Array(photon.userData.trailPositions.length * 3);
+                for (let j = 0; j < photon.userData.trailPositions.length; j++) {
+                    positions[j * 3] = photon.userData.trailPositions[j].x;
+                    positions[j * 3 + 1] = photon.userData.trailPositions[j].y;
+                    positions[j * 3 + 2] = photon.userData.trailPositions[j].z;
+                }
+                photon.userData.trail.geometry.setAttribute('position', 
+                    new THREE.BufferAttribute(positions, 3));
+                
+                // Fade out as photon ages
+                const fadeStart = 300;
+                if (photon.userData.age > fadeStart) {
+                    const fadeFactor = 1 - (photon.userData.age - fadeStart) / 200;
+                    photon.material.opacity = 0.95 * Math.max(0, fadeFactor);
+                    photon.userData.trail.material.opacity = 0.5 * Math.max(0, fadeFactor);
+                }
+                
+                // Remove photon if it's too far or too old
+                const distance = photon.position.length();
+                if (distance > 12 || photon.userData.age > 500) {
+                    scene.remove(photon);
+                    scene.remove(photon.userData.trail);
+                    photons.splice(i, 1);
+                }
+            }
+            
+            // Update solid angle cones (fade them out)
+            for (let i = solidAngleCones.length - 1; i >= 0; i--) {
+                const cone = solidAngleCones[i];
+                cone.userData.age++;
+                
+                const fadeProgress = cone.userData.age / cone.userData.maxAge;
+                cone.material.opacity = 0.3 * (1 - fadeProgress);
+                cone.scale.multiplyScalar(1.02);
+                
+                if (cone.userData.age > cone.userData.maxAge) {
+                    scene.remove(cone);
+                    solidAngleCones.splice(i, 1);
+                }
+            }
+        }
+
+        function updateStats() {
+            const statsDiv = document.getElementById('stats');
+            const activeCount = document.getElementById('activeCount');
+            
+            statsDiv.innerHTML = `
+                <strong>Simulation Stats:</strong><br>
+                Photons emitted: <span class="value-display">${totalEmitted}</span><br>
+                Active photons: <span class="value-display">${photons.length}</span>
+            `;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animationRunning) {
+                frameCount++;
+                
+                // Emit photons based on emission coefficient q
+                // Higher rate = higher emission coefficient
+                const emitProbability = emissionRate / 100;
+                if (Math.random() < emitProbability) {
+                    const numToEmit = Math.floor(Math.random() * 3) + 1;
+                    for (let i = 0; i < numToEmit; i++) {
+                        emitPhoton();
+                    }
+                }
+                
+                updatePhotons();
+                
+                // Update stats every 10 frames for performance
+                if (frameCount % 10 === 0) {
+                    updateStats();
+                }
+                
+                // Gentle automatic rotation
+                const time = Date.now() * 0.0001;
+                const radius = 9;
+                camera.position.x = Math.cos(time * 0.5) * radius;
+                camera.position.z = Math.sin(time * 0.5) * radius;
+                camera.position.y = 5 + Math.sin(time * 0.3) * 2;
+                camera.lookAt(0, 0, 0);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+
+        function resetSimulation() {
+            // Remove all photons
+            photons.forEach(photon => {
+                scene.remove(photon);
+                scene.remove(photon.userData.trail);
+            });
+            photons = [];
+            
+            // Remove all cones
+            solidAngleCones.forEach(cone => {
+                scene.remove(cone);
+            });
+            solidAngleCones = [];
+            
+            totalEmitted = 0;
+            frameCount = 0;
+            updateStats();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
