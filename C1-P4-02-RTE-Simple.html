@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiative Transfer Equation - Volume Element</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 220px;
+            font-size: 12px;
+        }
+        h2 {
+            margin: 0 0 10px 0;
+            color: #1a1a2e;
+            font-size: 16px;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 5px;
+        }
+        h3 {
+            margin: 12px 0 8px 0;
+            color: #1a1a2e;
+            font-size: 14px;
+            border-bottom: 1px solid #0f3460;
+            padding-bottom: 3px;
+        }
+        label {
+            display: block;
+            margin: 8px 0 3px 0;
+            color: #333;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        button {
+            width: 100%;
+            padding: 8px;
+            margin: 6px 0;
+            background: #0f3460;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #16213e;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        input[type="checkbox"] {
+            margin-right: 6px;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            font-size: 11px;
+            max-width: 280px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        .legend-color {
+            width: 30px;
+            height: 15px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 260px;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        .equation {
+            background: #f0f0f0;
+            padding: 6px;
+            border-radius: 4px;
+            margin: 6px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .vector {
+            font-weight: bold;
+            position: relative;
+            display: inline-block;
+        }
+        .vector::after {
+            content: '→';
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .section-label {
+            font-weight: bold;
+            color: #0f3460;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <h2>Controls</h2>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showVolume" checked>
+            <label for="showVolume">Show Volume Element</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showSolidAngle" checked>
+            <label for="showSolidAngle">Show Solid Angle Δ<span class="vector">Ω</span></label>
+        </div>
+        
+        <h3>Losses</h3>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showAbsorption" checked>
+            <label for="showAbsorption">Absorption</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showOutscattering" checked>
+            <label for="showOutscattering">Outscattering</label>
+        </div>
+        
+        <h3>Gains</h3>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showInscattering" checked>
+            <label for="showInscattering">Inscattering</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showEmission" checked>
+            <label for="showEmission">Emission</label>
+        </div>
+        
+        <div class="checkbox-container">
+            <input type="checkbox" id="showLabels" checked>
+            <label for="showLabels">Show Labels</label>
+        </div>
+        <button id="resetView">Reset View</button>
+        <button id="toggleRotation">Pause Rotation</button>
+    </div>
+
+    <div id="info">
+        <h2 style="font-size: 14px; margin-top: 0;">Volume Element at Point <span class="vector">r</span></h2>
+        <div class="equation">
+            Δ<span class="vector">r</span> = ΔS Δξ
+        </div>
+        <p style="margin: 6px 0; color: #333;">
+            centered at point <strong><span class="vector">r</span></strong> (cube center)
+        </p>
+        
+        <div class="section-label">Photon Properties:</div>
+        <p style="margin: 4px 0; color: #333;">
+            • Frequency: (ν, ν+Δν)<br>
+            • Direction: <span class="vector">Ω</span> (outward from <span class="vector">r</span>)<br>
+            • Solid angle: Δ<span class="vector">Ω</span> (cone opens from <span class="vector">r</span>, apex at far end)<br>
+            • Time: (t, t+Δt)
+        </p>
+        
+        <div class="section-label">Energy Balance:</div>
+        <div class="equation" style="font-size: 10px;">
+            dN/dt = Gains - Losses
+        </div>
+    </div>
+
+    <div id="legend">
+        <h2 style="font-size: 14px; margin-top: 0;">Legend</h2>
+        <div class="legend-item">
+            <div class="legend-color" style="background: rgba(100, 149, 237, 0.5); border: 2px solid #6495ED;"></div>
+            <span>Volume Element Δr</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FFFFFF; border: 1px solid #999;"></div>
+            <span>Host Material (particles)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: rgba(255, 215, 0, 0.3); border: 2px solid #FFD700;"></div>
+            <span>Solid Angle dΩ (narrow cone enclosing Ω)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #44FF44;"></div>
+            <span>Photons (all processes)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FF4444;"></div>
+            <span>Absorption (loss)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FF8844;"></div>
+            <span>Outscattering (loss)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #44FF44;"></div>
+            <span>Inscattering (gain)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #44FFFF;"></div>
+            <span>Emission (gain)</span>
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 10, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        const backLight = new THREE.DirectionalLight(0x6699ff, 0.4);
+        backLight.position.set(-10, -10, -5);
+        scene.add(backLight);
+
+        // Create volume element (cube)
+        const volumeSize = 2;
+        const volumeGeometry = new THREE.BoxGeometry(volumeSize, volumeSize, volumeSize);
+        const volumeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x6495ED,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        const volumeElement = new THREE.Mesh(volumeGeometry, volumeMaterial);
+        scene.add(volumeElement);
+
+        // Add edges to volume element
+        const volumeEdges = new THREE.EdgesGeometry(volumeGeometry);
+        const volumeLines = new THREE.LineSegments(
+            volumeEdges,
+            new THREE.LineBasicMaterial({ color: 0x6495ED, linewidth: 2 })
+        );
+        volumeElement.add(volumeLines);
+
+        // Create small particles inside volume to represent host material
+        const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        const particleMaterial = new THREE.MeshPhongMaterial({ color: 0xCCCCCC });
+        
+        for (let i = 0; i < 30; i++) {
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            particle.position.set(
+                (Math.random() - 0.5) * volumeSize * 0.8,
+                (Math.random() - 0.5) * volumeSize * 0.8,
+                (Math.random() - 0.5) * volumeSize * 0.8
+            );
+            volumeElement.add(particle);
+        }
+
+        // Define Omega direction (pointing outward from center point r)
+        const omegaDirection = new THREE.Vector3(1, 0.5, 0.3).normalize();
+
+        // Create NARROW solid angle cone dΩ - base at point r (center), apex at far end
+        const coneAngle = 0.15; // NARROW half-angle in radians (~8.6 degrees)
+        const coneHeight = 4.0; // length of cone extending outward from r
+        const coneRadius = coneHeight * Math.tan(coneAngle);
+        
+        // Create cone - we'll flip it so base is at origin and apex points outward
+        const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 32, 1, true);
+        const coneMaterial = new THREE.MeshPhongMaterial({
+            color: 0xFFD700,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const solidAngleCone = new THREE.Mesh(coneGeometry, coneMaterial);
+
+        // Position and orient the cone
+        solidAngleCone.position.set(0, 0, 0);
+        
+        // Default cone points along +Y with apex at top
+        // We need to flip it 180° so apex points along +Y direction (outward)
+        // Then rotate to align with omegaDirection
+        const defaultDirection = new THREE.Vector3(0, -1, 0); // Point down first (flipped)
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(defaultDirection, omegaDirection);
+        solidAngleCone.quaternion.copy(quaternion);
+        
+        // Translate so the BASE of the cone is at point r (origin)
+        // After rotation, move along the axis so base is at origin
+        const offset = new THREE.Vector3(0, -coneHeight / 2, 0); // Negative to bring base to origin
+        offset.applyQuaternion(quaternion);
+        solidAngleCone.position.add(offset);
+
+        scene.add(solidAngleCone);
+
+        // Add cone edges for better visibility of narrow cone
+        const coneEdgesGeometry = new THREE.EdgesGeometry(coneGeometry);
+        const coneEdges = new THREE.LineSegments(
+            coneEdgesGeometry,
+            new THREE.LineBasicMaterial({ color: 0xFFD700, linewidth: 2 })
+        );
+        solidAngleCone.add(coneEdges);
+
+        // Create Omega direction arrow - positioned along CENTER AXIS of the narrow cone
+        // Arrow shows the direction Ω, which is enclosed by the solid angle dΩ
+        const arrowLength = 3.0;
+        const arrowHelper = new THREE.ArrowHelper(
+            omegaDirection,
+            new THREE.Vector3(0, 0, 0), // Start at point r (center)
+            arrowLength,
+            0xFF6600,  // Orange-red color to stand out
+            0.5,  // head length
+            0.3   // head width
+        );
+        scene.add(arrowHelper);
+        const omegaArrow = arrowHelper;
+
+        // Helper function to create text labels
+        function createTextLabel(text, position, color, size = 40) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 128;
+            
+            context.fillStyle = color;
+            context.font = `Bold ${size}px Arial`;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 128, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.position.copy(position);
+            sprite.scale.set(2, 1, 1);
+            
+            return sprite;
+        }
+
+        // Create label for volume element with vector arrow
+        const volumeLabel = createTextLabel('Δr⃗', new THREE.Vector3(0, -1.5, 0), '#6495ED', 50);
+        scene.add(volumeLabel);
+
+        // Create label for point r with vector arrow
+        const pointLabel = createTextLabel('r⃗', new THREE.Vector3(0.3, 0.3, 0), '#FFFFFF', 40);
+        scene.add(pointLabel);
+
+        // Create label for Omega direction with vector arrow
+        const omegaLabelPos = omegaDirection.clone().multiplyScalar(3.3);
+        const omegaLabel = createTextLabel('Ω⃗', omegaLabelPos, '#FF6600', 50);
+        scene.add(omegaLabel);
+
+        // Helper function to create a particle with sphere and arrow
+        function createParticleWithSphere(startPos, direction, arrowLength, color, sphereSize = 0.08) {
+            const group = new THREE.Group();
+            
+            // Create sphere at starting position
+            const sphereGeometry = new THREE.SphereGeometry(sphereSize, 16, 16);
+            const sphereMaterial = new THREE.MeshPhongMaterial({ 
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.3
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            group.add(sphere);
+            
+            // Create arrow showing direction
+            const arrow = new THREE.ArrowHelper(
+                direction,
+                new THREE.Vector3(0, 0, 0),
+                arrowLength,
+                color,
+                0.2,
+                0.15
+            );
+            group.add(arrow);
+            
+            group.position.copy(startPos);
+            return group;
+        }
+
+        // Arrays to store photon objects
+        const absorptionPhotons = [];
+        const outscatteringPhotons = [];
+        const inscatteringPhotons = [];
+        const emissionPhotons = [];
+        const absorptionLabels = [];
+        const outscatteringLabels = [];
+        const inscatteringLabels = [];
+        const emissionLabels = [];
+
+        // Create absorption photons (traveling in Ω direction, being absorbed - GREEN)
+        for (let i = 0; i < 3; i++) {
+            const startPos = new THREE.Vector3(
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6
+            );
+            
+            // Add small random perturbation to direction
+            const dir = omegaDirection.clone().add(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2
+            )).normalize();
+            
+            const photon = createParticleWithSphere(startPos, dir, 1.0, 0x44FF44, 0.1);
+            absorptionPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 1) {
+                const labelPos = startPos.clone().add(dir.clone().multiplyScalar(1.3));
+                const label = createTextLabel('Absorption', labelPos, '#FF4444', 35);
+                absorptionLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Create outscattering photons (initially in Ω, scattering OUT - GREEN)
+        for (let i = 0; i < 4; i++) {
+            const startPos = new THREE.Vector3(
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6
+            );
+            
+            // Create perpendicular direction (scattering out of Ω)
+            const perpDir = new THREE.Vector3(
+                omegaDirection.y,
+                -omegaDirection.x,
+                0
+            ).normalize();
+            
+            // Mix of Omega direction and perpendicular (scattering away)
+            const scatterDir = omegaDirection.clone().multiplyScalar(0.3).add(perpDir.multiplyScalar(0.7)).normalize();
+            
+            const photon = createParticleWithSphere(startPos, scatterDir, 1.5, 0x44FF44, 0.1);
+            outscatteringPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 0) {
+                const labelPos = startPos.clone().add(scatterDir.clone().multiplyScalar(1.8));
+                const label = createTextLabel('Outscatter', labelPos, '#FF8844', 35);
+                outscatteringLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Create inscattering photons (photons scattering INTO Ω direction - GREEN)
+        // All inscattering photons must end up INSIDE the solid angle cone
+        for (let i = 0; i < 5; i++) {
+            const startPos = new THREE.Vector3(
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6
+            );
+            
+            // Direction must be within the solid angle cone (close to Ω)
+            // Generate direction within a small cone around Ω
+            const theta = Math.random() * 0.25; // Small angle variation to stay in cone
+            const phi = Math.random() * 2 * Math.PI;
+            
+            // Perpendicular vectors to Ω
+            const perpDir1 = new THREE.Vector3(
+                omegaDirection.y,
+                -omegaDirection.x,
+                0
+            ).normalize();
+            
+            const perpDir2 = new THREE.Vector3().crossVectors(omegaDirection, perpDir1).normalize();
+            
+            // Direction within cone
+            const scatterDir = omegaDirection.clone()
+                .add(perpDir1.clone().multiplyScalar(Math.sin(theta) * Math.cos(phi)))
+                .add(perpDir2.clone().multiplyScalar(Math.sin(theta) * Math.sin(phi)))
+                .normalize();
+            
+            const photon = createParticleWithSphere(startPos, scatterDir, 1.5, 0x44FF44, 0.1);
+            inscatteringPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 1) {
+                const labelPos = startPos.clone().add(scatterDir.clone().multiplyScalar(1.8));
+                const label = createTextLabel('Inscatter', labelPos, '#44FF44', 35);
+                inscatteringLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Create emission photons (photons being emitted in Ω direction - GREEN)
+        for (let i = 0; i < 4; i++) {
+            const startPos = new THREE.Vector3(
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6,
+                (Math.random() - 0.5) * volumeSize * 0.6
+            );
+            
+            // Direction roughly aligned with Ω
+            const dir = omegaDirection.clone().add(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3
+            )).normalize();
+            
+            const photon = createParticleWithSphere(startPos, dir, 1.2, 0x44FF44, 0.1);
+            emissionPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 2) {
+                const labelPos = startPos.clone().add(dir.clone().multiplyScalar(1.5));
+                const label = createTextLabel('Emission', labelPos, '#44FFFF', 35);
+                emissionLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Collect all labels
+        const allLabels = [volumeLabel, pointLabel, omegaLabel, ...absorptionLabels, ...outscatteringLabels, 
+                          ...inscatteringLabels, ...emissionLabels];
+
+        // Control variables
+        let rotationEnabled = true;
+
+        // Event listeners
+        document.getElementById('showVolume').addEventListener('change', (e) => {
+            volumeElement.visible = e.target.checked;
+            volumeLabel.visible = e.target.checked;
+            pointLabel.visible = e.target.checked;
+        });
+
+        document.getElementById('showSolidAngle').addEventListener('change', (e) => {
+            solidAngleCone.visible = e.target.checked;
+            omegaLabel.visible = e.target.checked;
+            omegaArrow.visible = e.target.checked;
+        });
+
+        document.getElementById('showAbsorption').addEventListener('change', (e) => {
+            absorptionPhotons.forEach(p => p.visible = e.target.checked);
+            absorptionLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showOutscattering').addEventListener('change', (e) => {
+            outscatteringPhotons.forEach(p => p.visible = e.target.checked);
+            outscatteringLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showInscattering').addEventListener('change', (e) => {
+            inscatteringPhotons.forEach(p => p.visible = e.target.checked);
+            inscatteringLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showEmission').addEventListener('change', (e) => {
+            emissionPhotons.forEach(p => p.visible = e.target.checked);
+            emissionLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showLabels').addEventListener('change', (e) => {
+            allLabels.forEach(label => label.visible = e.target.checked);
+        });
+
+        document.getElementById('resetView').addEventListener('click', () => {
+            camera.position.set(8, 6, 8);
+            camera.lookAt(0, 0, 0);
+        });
+
+        document.getElementById('toggleRotation').addEventListener('click', (e) => {
+            rotationEnabled = !rotationEnabled;
+            e.target.textContent = rotationEnabled ? 'Pause Rotation' : 'Resume Rotation';
+        });
+
+        // Mouse controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                const rotationSpeed = 0.005;
+                
+                // Rotate camera around the scene
+                const radius = camera.position.length();
+                const theta = Math.atan2(camera.position.x, camera.position.z);
+                const phi = Math.acos(camera.position.y / radius);
+                
+                const newTheta = theta + deltaX * rotationSpeed;
+                const newPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi + deltaY * rotationSpeed));
+                
+                camera.position.x = radius * Math.sin(newPhi) * Math.sin(newTheta);
+                camera.position.y = radius * Math.cos(newPhi);
+                camera.position.z = radius * Math.sin(newPhi) * Math.cos(newTheta);
+                camera.lookAt(0, 0, 0);
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const direction = camera.position.clone().normalize();
+            const distance = e.deltaY * zoomSpeed;
+            
+            camera.position.add(direction.multiplyScalar(distance));
+            
+            // Clamp camera distance
+            const dist = camera.position.length();
+            if (dist < 3) {
+                camera.position.normalize().multiplyScalar(3);
+            } else if (dist > 20) {
+                camera.position.normalize().multiplyScalar(20);
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (rotationEnabled) {
+                volumeElement.rotation.y += 0.003;
+            }
+            
+            // Make labels face camera
+            allLabels.forEach(label => {
+                label.lookAt(camera.position);
+            });
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

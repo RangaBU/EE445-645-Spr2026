@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiDAR Forest Canopy Remote Sensing</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0e27;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            max-width: 300px;
+            z-index: 100;
+        }
+        #info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #4CAF50;
+        }
+        #chart-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 400px;
+            height: 300px;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 100;
+        }
+        #chart-title {
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        canvas {
+            display: block;
+        }
+        #heightChart {
+            width: 100%;
+            height: 100%;
+        }
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            z-index: 100;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 12px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="info">
+        <h3>Satellite LiDAR Remote Sensing</h3>
+        <p><strong>Sensor:</strong> ICESat-2 ATLAS</p>
+        <p><strong>Wavelength:</strong> 532 nm (green)</p>
+        <p><strong>Scan Progress:</strong> <span id="progress">0%</span></p>
+        <p><strong>Returns Detected:</strong> <span id="returns">0</span></p>
+    </div>
+
+    <div class="legend">
+        <div style="font-weight: bold; margin-bottom: 8px;">Forest Structure</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #2d5016;"></div>
+            <span>Mature Canopy (20-30m)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #4a7c2c;"></div>
+            <span>Young Trees (10-20m)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #6b9d4a;"></div>
+            <span>Understory (0-10m)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ff00;"></div>
+            <span>LiDAR Pulse</span>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="pauseBtn">Pause Scan</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+
+    <div id="chart-container">
+        <div id="chart-title">Vertical Leaf Area Distribution</div>
+        <canvas id="heightChart"></canvas>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0e27);
+        scene.fog = new THREE.Fog(0x0a0e27, 50, 200);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(80, 60, 80);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffee, 0.8);
+        sunLight.position.set(50, 80, 50);
+        sunLight.castShadow = true;
+        sunLight.shadow.camera.left = -50;
+        sunLight.shadow.camera.right = 50;
+        sunLight.shadow.camera.top = 50;
+        sunLight.shadow.camera.bottom = -50;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x3a2f1a,
+            roughness: 0.8
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(100, 20, 0x444444, 0x222222);
+        scene.add(gridHelper);
+
+        // Forest data structure
+        const trees = [];
+        const forestSize = 80;
+        
+        // Create forest with different age classes
+        function createForest() {
+            for (let i = 0; i < 400; i++) {
+                const x = (Math.random() - 0.5) * forestSize;
+                const z = (Math.random() - 0.5) * forestSize;
+                
+                // Determine tree type based on random distribution
+                const rand = Math.random();
+                let height, radius, color, ageClass;
+                
+                if (rand < 0.3) { // Mature trees (30%)
+                    height = 20 + Math.random() * 10;
+                    radius = 2 + Math.random() * 2;
+                    color = 0x2d5016;
+                    ageClass = 'mature';
+                } else if (rand < 0.6) { // Young trees (30%)
+                    height = 10 + Math.random() * 10;
+                    radius = 1.5 + Math.random() * 1.5;
+                    color = 0x4a7c2c;
+                    ageClass = 'young';
+                } else { // Understory (40%)
+                    height = 2 + Math.random() * 8;
+                    radius = 0.8 + Math.random() * 1;
+                    color = 0x6b9d4a;
+                    ageClass = 'understory';
+                }
+                
+                createTree(x, z, height, radius, color, ageClass);
+            }
+        }
+
+        function createTree(x, z, height, radius, color, ageClass) {
+            // Trunk
+            const trunkGeometry = new THREE.CylinderGeometry(radius * 0.2, radius * 0.25, height * 0.4, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a3728 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.set(x, height * 0.2, z);
+            trunk.castShadow = true;
+            scene.add(trunk);
+
+            // Canopy (multiple layers for realistic look)
+            const canopyHeight = height * 0.6;
+            const canopyGroup = new THREE.Group();
+            
+            for (let i = 0; i < 3; i++) {
+                const layerRadius = radius * (1 - i * 0.2);
+                const coneGeometry = new THREE.ConeGeometry(layerRadius, canopyHeight / 3, 8);
+                const canopyMaterial = new THREE.MeshStandardMaterial({ 
+                    color: color,
+                    roughness: 0.9
+                });
+                const cone = new THREE.Mesh(coneGeometry, canopyMaterial);
+                cone.position.y = height * 0.4 + (canopyHeight / 3) * i;
+                cone.castShadow = true;
+                canopyGroup.add(cone);
+            }
+            
+            canopyGroup.position.set(x, 0, z);
+            scene.add(canopyGroup);
+
+            trees.push({
+                x: x,
+                z: z,
+                height: height,
+                radius: radius,
+                ageClass: ageClass,
+                elements: [trunk, canopyGroup]
+            });
+        }
+
+        createForest();
+
+        // Satellite and LiDAR system
+        const satelliteHeight = 70;
+        const satelliteGroup = new THREE.Group();
+        
+        // Satellite body
+        const satelliteGeometry = new THREE.BoxGeometry(3, 1, 4);
+        const satelliteMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x888888,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const satellite = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
+        satelliteGroup.add(satellite);
+
+        // Solar panels
+        const panelGeometry = new THREE.BoxGeometry(5, 0.1, 2);
+        const panelMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1a1a3a,
+            metalness: 0.5
+        });
+        const panel1 = new THREE.Mesh(panelGeometry, panelMaterial);
+        panel1.position.set(0, 0.6, 0);
+        satelliteGroup.add(panel1);
+
+        // LiDAR instrument (visible telescope/sensor)
+        const lidarBody = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 16);
+        const lidarMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x333333,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const lidar = new THREE.Mesh(lidarBody, lidarMaterial);
+        lidar.position.set(0, -1, 0);
+        satelliteGroup.add(lidar);
+
+        // LiDAR lens/aperture
+        const lensGeometry = new THREE.CylinderGeometry(0.35, 0.35, 0.2, 16);
+        const lensMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x00ff00,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.5,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const lens = new THREE.Mesh(lensGeometry, lensMaterial);
+        lens.position.set(0, -1.75, 0);
+        satelliteGroup.add(lens);
+
+        // LiDAR indicator ring
+        const ringGeometry = new THREE.TorusGeometry(0.4, 0.05, 8, 16);
+        const ringMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.6
+        });
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.position.set(0, -1.75, 0);
+        ring.rotation.x = Math.PI / 2;
+        satelliteGroup.add(ring);
+
+        satelliteGroup.position.set(-forestSize/2, satelliteHeight, -forestSize/2);
+        scene.add(satelliteGroup);
+
+        // Scan lines on ground
+        const scanLines = [];
+        const maxScanLines = 50;
+
+        function createScanLine(x, z) {
+            // Scan line perpendicular to direction of travel (satellite moves in +X direction)
+            // So scan line extends along Z-axis
+            const scanGeometry = new THREE.PlaneGeometry(0.3, forestSize * 1.2);
+            const scanMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+            });
+            const scanLine = new THREE.Mesh(scanGeometry, scanMaterial);
+            scanLine.rotation.x = -Math.PI / 2;
+            scanLine.rotation.z = Math.PI / 2; // Rotate to align with Z-axis (perpendicular to travel)
+            scanLine.position.set(x, 0.05, z);
+            scene.add(scanLine);
+
+            scanLines.push({
+                mesh: scanLine,
+                age: 0
+            });
+
+            // Remove old scan lines
+            if (scanLines.length > maxScanLines) {
+                const old = scanLines.shift();
+                scene.remove(old.mesh);
+            }
+        }
+
+        // Update scan lines (fade over time)
+        function updateScanLines() {
+            scanLines.forEach((line, idx) => {
+                line.age++;
+                line.mesh.material.opacity = Math.max(0, 0.5 - (line.age / 80));
+            });
+        }
+
+        // LiDAR pulses and returns
+        const activePulses = [];
+        const heightData = new Array(30).fill(0); // 30 height bins (0-30m)
+        let totalReturns = 0;
+        let scanProgress = 0;
+
+        // Create a single pulse
+        function createPulse(startX, startZ) {
+            const pulseGroup = new THREE.Group();
+            
+            // Outgoing pulse (angled)
+            const pulseGeometry = new THREE.CylinderGeometry(0.08, 0.08, 5, 8);
+            const pulseMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+            
+            // Add glow
+            const glowGeometry = new THREE.CylinderGeometry(0.15, 0.15, 5, 8);
+            const glowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            pulse.add(glow);
+            
+            pulseGroup.add(pulse);
+            pulseGroup.position.set(startX, satelliteHeight, startZ);
+            
+            // Angle the pulse slightly
+            pulseGroup.rotation.x = Math.PI / 12;
+            
+            scene.add(pulseGroup);
+            
+            // Create scan line on ground
+            createScanLine(startX, startZ);
+            
+            return {
+                group: pulseGroup,
+                startX: startX,
+                startZ: startZ,
+                phase: 'outgoing',
+                targetY: 0,
+                returnY: 0,
+                hitPoints: []
+            };
+        }
+
+        // Check intersection with forest
+        function checkIntersection(x, z, currentY) {
+            const hits = [];
+            
+            for (const tree of trees) {
+                const dx = x - tree.x;
+                const dz = z - tree.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < tree.radius) {
+                    // Check canopy layers
+                    if (currentY <= tree.height && currentY >= tree.height * 0.4) {
+                        hits.push({
+                            height: currentY,
+                            type: 'canopy'
+                        });
+                    }
+                    // Check trunk
+                    else if (currentY <= tree.height * 0.4 && currentY >= 0 && distance < tree.radius * 0.25) {
+                        hits.push({
+                            height: currentY,
+                            type: 'trunk'
+                        });
+                    }
+                }
+            }
+            
+            return hits;
+        }
+
+        // Update pulses
+        function updatePulses() {
+            for (let i = activePulses.length - 1; i >= 0; i--) {
+                const pulse = activePulses[i];
+                
+                if (pulse.phase === 'outgoing') {
+                    // Move pulse downward
+                    pulse.group.position.y -= 1.5;
+                    
+                    // Check for intersections
+                    const hits = checkIntersection(pulse.startX, pulse.startZ, pulse.group.position.y);
+                    
+                    if (hits.length > 0) {
+                        pulse.hitPoints.push(...hits);
+                        
+                        // Create return photons
+                        hits.forEach(hit => {
+                            createReturnPhoton(pulse.startX, pulse.startZ, hit.height);
+                            
+                            // Add to height distribution
+                            const bin = Math.floor(hit.height);
+                            if (bin >= 0 && bin < heightData.length) {
+                                heightData[bin]++;
+                                totalReturns++;
+                            }
+                        });
+                    }
+                    
+                    // Remove if hit ground
+                    if (pulse.group.position.y < 0) {
+                        // Ground return
+                        createReturnPhoton(pulse.startX, pulse.startZ, 0);
+                        heightData[0]++;
+                        totalReturns++;
+                        
+                        scene.remove(pulse.group);
+                        activePulses.splice(i, 1);
+                    }
+                }
+            }
+        }
+
+        // Create return photon (vertical path back to satellite)
+        const returnPhotons = [];
+        
+        function createReturnPhoton(x, z, hitHeight) {
+            const photonGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const photonMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.9
+            });
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            photon.position.set(x, hitHeight, z);
+            scene.add(photon);
+            
+            // Add trail
+            const trailGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1, 6);
+            const trailMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.4
+            });
+            const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+            trail.position.y = 0.5;
+            photon.add(trail);
+            
+            returnPhotons.push({
+                mesh: photon,
+                startHeight: hitHeight,
+                trail: trail
+            });
+        }
+
+        // Update return photons
+        function updateReturnPhotons() {
+            for (let i = returnPhotons.length - 1; i >= 0; i--) {
+                const photon = returnPhotons[i];
+                photon.mesh.position.y += 2;
+                
+                // Update trail length
+                const traveled = photon.mesh.position.y - photon.startHeight;
+                photon.trail.scale.y = traveled;
+                photon.trail.position.y = traveled / 2;
+                
+                // Fade out as it rises
+                photon.mesh.material.opacity = Math.max(0, 1 - traveled / satelliteHeight);
+                
+                if (photon.mesh.position.y > satelliteHeight) {
+                    scene.remove(photon.mesh);
+                    returnPhotons.splice(i, 1);
+                }
+            }
+        }
+
+        // Chart setup
+        const chartCanvas = document.getElementById('heightChart');
+        const chartCtx = chartCanvas.getContext('2d');
+        chartCanvas.width = 370;
+        chartCanvas.height = 250;
+
+        function drawChart() {
+            chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+            
+            const barHeight = chartCanvas.height / heightData.length;
+            const maxCount = Math.max(...heightData, 1);
+            const maxBarWidth = chartCanvas.width - 60;
+            
+            // Draw bars (vertical orientation - height on y-axis)
+            heightData.forEach((count, i) => {
+                const barWidth = (count / maxCount) * maxBarWidth;
+                const x = 50;
+                const y = chartCanvas.height - (i + 1) * barHeight;
+                
+                // Color based on height class
+                let color;
+                if (i < 10) color = '#6b9d4a'; // Understory
+                else if (i < 20) color = '#4a7c2c'; // Young
+                else color = '#2d5016'; // Mature
+                
+                chartCtx.fillStyle = color;
+                chartCtx.fillRect(x, y, barWidth, barHeight - 1);
+            });
+            
+            // Draw axes
+            chartCtx.strokeStyle = '#ffffff';
+            chartCtx.lineWidth = 2;
+            chartCtx.beginPath();
+            chartCtx.moveTo(50, 0);
+            chartCtx.lineTo(50, chartCanvas.height);
+            chartCtx.lineTo(chartCanvas.width, chartCanvas.height);
+            chartCtx.stroke();
+            
+            // Y-axis labels (height)
+            chartCtx.fillStyle = '#ffffff';
+            chartCtx.font = '10px sans-serif';
+            chartCtx.textAlign = 'right';
+            chartCtx.fillText('0m', 45, chartCanvas.height - 5);
+            chartCtx.fillText('15m', 45, chartCanvas.height / 2);
+            chartCtx.fillText('30m', 45, 10);
+            
+            // X-axis label
+            chartCtx.textAlign = 'center';
+            chartCtx.fillText('Returns', chartCanvas.width / 2 + 25, chartCanvas.height - 5);
+            
+            // Y-axis label
+            chartCtx.save();
+            chartCtx.translate(15, chartCanvas.height / 2);
+            chartCtx.rotate(-Math.PI / 2);
+            chartCtx.fillText('Height (m)', 0, 0);
+            chartCtx.restore();
+        }
+
+        // Animation variables
+        let paused = false;
+        let frameCount = 0;
+        const scanSpeed = 0.3;
+
+        // Controls
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            paused = !paused;
+            document.getElementById('pauseBtn').textContent = paused ? 'Resume Scan' : 'Pause Scan';
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            heightData.fill(0);
+            totalReturns = 0;
+            scanProgress = 0;
+            satelliteGroup.position.set(-forestSize/2, satelliteHeight, -forestSize/2);
+            activePulses.forEach(p => scene.remove(p.group));
+            activePulses.length = 0;
+            returnPhotons.forEach(p => scene.remove(p.mesh));
+            returnPhotons.length = 0;
+            scanLines.forEach(line => scene.remove(line.mesh));
+            scanLines.length = 0;
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!paused) {
+                frameCount++;
+                
+                // Move satellite across forest
+                satelliteGroup.position.x += scanSpeed;
+                
+                if (satelliteGroup.position.x > forestSize/2) {
+                    satelliteGroup.position.x = -forestSize/2;
+                    satelliteGroup.position.z += 3;
+                    
+                    if (satelliteGroup.position.z > forestSize/2) {
+                        satelliteGroup.position.z = -forestSize/2;
+                    }
+                }
+                
+                // Emit pulse every few frames
+                if (frameCount % 8 === 0) {
+                    const pulse = createPulse(satelliteGroup.position.x, satelliteGroup.position.z);
+                    activePulses.push(pulse);
+                }
+                
+                updatePulses();
+                updateReturnPhotons();
+                updateScanLines();
+                drawChart();
+                
+                // Update UI
+                const totalArea = forestSize * forestSize;
+                const scannedArea = (satelliteGroup.position.x + forestSize/2) * forestSize + 
+                                   (satelliteGroup.position.z + forestSize/2) * (satelliteGroup.position.x + forestSize/2);
+                scanProgress = Math.min(100, (scannedArea / totalArea) * 100);
+                
+                document.getElementById('progress').textContent = scanProgress.toFixed(1) + '%';
+                document.getElementById('returns').textContent = totalReturns.toLocaleString();
+            }
+            
+            // Rotate camera slowly
+            const time = Date.now() * 0.0001;
+            camera.position.x = Math.cos(time) * 80;
+            camera.position.z = Math.sin(time) * 80;
+            camera.lookAt(0, 15, 0);
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Change in Photon Distribution - Chain Rule</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 240px;
+            font-size: 12px;
+        }
+        h2 {
+            margin: 0 0 10px 0;
+            color: #1a1a2e;
+            font-size: 16px;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 5px;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        input[type="checkbox"] {
+            margin-right: 6px;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        button {
+            width: 100%;
+            padding: 8px;
+            margin: 6px 0;
+            background: #0f3460;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        button:hover {
+            background: #16213e;
+        }
+        label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #333;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            font-size: 10px;
+            line-height: 1.5;
+        }
+        .equation {
+            background: #f0f0f0;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 6px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            line-height: 1.4;
+        }
+        .vector {
+            font-weight: bold;
+        }
+        .section-label {
+            font-weight: bold;
+            color: #0f3460;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        .highlight {
+            background: #ffffcc;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            font-size: 11px;
+            max-width: 300px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        .legend-color {
+            width: 30px;
+            height: 15px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <h2>Display Controls</h2>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showVolumes" checked>
+            <label for="showVolumes">Show Volumes</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showPhotons" checked>
+            <label for="showPhotons">Show Photons</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showPath" checked>
+            <label for="showPath">Show Travel Path</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showLabels" checked>
+            <label for="showLabels">Show Labels</label>
+        </div>
+        <button id="resetView">Reset View</button>
+    </div>
+
+    <div id="info">
+        <h2 style="font-size: 13px; margin-top: 0;">Change in Photon Distribution Function</h2>
+        
+        <div class="section-label">Change Δf as photons travel:</div>
+        <div class="equation">
+Δf = f(<span class="vector">r</span>+Δξ<span class="vector">Ω</span>, ν, <span class="vector">Ω</span>, t+Δt) 
+   - f(<span class="vector">r</span>, ν, <span class="vector">Ω</span>, t)
+        </div>
+        
+        <div class="section-label">Photons move with time:</div>
+        <div class="equation">
+<span class="vector">r</span>(t) depends on t
+Position changes: <span class="vector">r</span> → <span class="vector">r</span> + Δξ<span class="vector">Ω</span>
+Time advances: t → t + Δt
+Distance: Δξ = c·Δt
+        </div>
+        
+        <div class="section-label">Chain rule needed:</div>
+        <div class="equation">
+Δf/Δt = ∂f/∂t + (∂f/∂x)(dx/dt) + (∂f/∂y)(dy/dt) + (∂f/∂z)(dz/dt)
+      = ∂f/∂t + (∂f/∂x)(cΩₓ) + (∂f/∂y)(cΩᵧ) + (∂f/∂z)(cΩᵧ)
+        </div>
+        
+        <div class="section-label">Final form:</div>
+        <div class="equation">
+Δf/Δt = (1/c·∂f/∂t + ∂f/∂x·Ωₓ + ∂f/∂y·Ωᵧ + ∂f/∂z·Ωᵧ)·c
+        </div>
+        
+        <p style="margin: 6px 0; color: #333; font-size: 9px;">
+            <span class="highlight">Key insight:</span> Position <span class="vector">r</span> depends on time t because photons travel. 
+            Chain rule accounts for both explicit time dependence (∂f/∂t) 
+            and implicit time dependence through position (∂f/∂x·dx/dt, etc.).
+        </p>
+    </div>
+
+    <div id="legend">
+        <h2 style="font-size: 13px; margin-top: 0;">Legend</h2>
+        <div class="legend-item">
+            <div class="legend-color" style="background: rgba(100, 149, 237, 0.4); border: 2px solid #6495ED;"></div>
+            <span>Volume at <span class="vector">r</span>, time t</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: rgba(0, 255, 0, 0.4); border: 2px solid #00FF00;"></div>
+            <span>Volume at <span class="vector">r</span>+Δξ<span class="vector">Ω</span>, time t+Δt</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00FFFF;"></div>
+            <span>Photons at (<span class="vector">r</span>, t)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00FF00;"></div>
+            <span>Photons at (<span class="vector">r</span>+Δξ<span class="vector">Ω</span>, t+Δt)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FFD700;"></div>
+            <span>Travel path Δξ = c·Δt</span>
+        </div>
+    </div>
+
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(6, 4, 6);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        function createTextLabel(text, position, color = '#FFFFFF', fontSize = 35) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 128;
+            
+            context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 10);
+            context.fill();
+            
+            context.font = `bold ${fontSize}px Arial`;
+            context.fillStyle = color;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(2.5, 0.6, 1);
+            sprite.position.copy(position);
+            
+            return sprite;
+        }
+
+        const omegaDirection = new THREE.Vector3(1, 0, 0).normalize();
+        const deltaS = 1.2;
+        const deltaXi = 2.5;
+
+        const cylQuaternion = new THREE.Quaternion();
+        cylQuaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), omegaDirection);
+
+        // Volume 1: at position r, time t (blue)
+        const volume1Geometry = new THREE.CylinderGeometry(deltaS/2, deltaS/2, 0.8, 32);
+        const volume1Material = new THREE.MeshPhongMaterial({
+            color: 0x6495ED,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        const volume1 = new THREE.Mesh(volume1Geometry, volume1Material);
+        volume1.applyQuaternion(cylQuaternion);
+        const pos1 = new THREE.Vector3(-1.5, 0, 0);
+        volume1.position.copy(pos1);
+        scene.add(volume1);
+
+        const edges1 = new THREE.LineSegments(
+            new THREE.EdgesGeometry(volume1Geometry),
+            new THREE.LineBasicMaterial({ color: 0x6495ED, linewidth: 2 })
+        );
+        edges1.applyQuaternion(cylQuaternion);
+        edges1.position.copy(pos1);
+        scene.add(edges1);
+
+        // Volume 2: at position r + Δξ·Ω, time t+Δt (green)
+        const volume2Geometry = new THREE.CylinderGeometry(deltaS/2, deltaS/2, 0.8, 32);
+        const volume2Material = new THREE.MeshPhongMaterial({
+            color: 0x00FF00,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        const volume2 = new THREE.Mesh(volume2Geometry, volume2Material);
+        volume2.applyQuaternion(cylQuaternion);
+        const pos2 = pos1.clone().add(omegaDirection.clone().multiplyScalar(deltaXi));
+        volume2.position.copy(pos2);
+        scene.add(volume2);
+
+        const edges2 = new THREE.LineSegments(
+            new THREE.EdgesGeometry(volume2Geometry),
+            new THREE.LineBasicMaterial({ color: 0x00FF00, linewidth: 2 })
+        );
+        edges2.applyQuaternion(cylQuaternion);
+        edges2.position.copy(pos2);
+        scene.add(edges2);
+
+        // Travel path arrow
+        const pathArrow = new THREE.ArrowHelper(
+            omegaDirection,
+            pos1,
+            deltaXi,
+            0xFFD700,
+            0.4,
+            0.3
+        );
+        pathArrow.line.material.linewidth = 4;
+        scene.add(pathArrow);
+
+        // Distance marker below
+        const markerOffset = new THREE.Vector3(0, -1.0, 0);
+        const markerStart = pos1.clone().add(markerOffset);
+        const markerEnd = pos2.clone().add(markerOffset);
+        
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints([markerStart, markerEnd]);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xFFD700, linewidth: 3 });
+        const markerLine = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(markerLine);
+        
+        const tickHeight = 0.15;
+        const startTickTop = markerStart.clone().add(new THREE.Vector3(0, tickHeight, 0));
+        const startTickBottom = markerStart.clone().add(new THREE.Vector3(0, -tickHeight, 0));
+        const startTickGeometry = new THREE.BufferGeometry().setFromPoints([startTickTop, startTickBottom]);
+        const startTick = new THREE.Line(startTickGeometry, lineMaterial);
+        scene.add(startTick);
+        
+        const endTickTop = markerEnd.clone().add(new THREE.Vector3(0, tickHeight, 0));
+        const endTickBottom = markerEnd.clone().add(new THREE.Vector3(0, -tickHeight, 0));
+        const endTickGeometry = new THREE.BufferGeometry().setFromPoints([endTickTop, endTickBottom]);
+        const endTick = new THREE.Line(endTickGeometry, lineMaterial);
+        scene.add(endTick);
+
+        const pathLabel = createTextLabel('Δξ = c·Δt', markerStart.clone().add(markerEnd).multiplyScalar(0.5).add(new THREE.Vector3(0, -0.4, 0)), '#FFD700', 32);
+        scene.add(pathLabel);
+
+        // Labels for volumes
+        const label1 = createTextLabel('f(r, ν, Ω, t)', pos1.clone().add(new THREE.Vector3(0, 0.9, 0)), '#6495ED', 30);
+        scene.add(label1);
+
+        const label2 = createTextLabel('f(r+Δξ·Ω, ν, Ω, t+Δt)', pos2.clone().add(new THREE.Vector3(0, 0.9, 0)), '#00FF00', 28);
+        scene.add(label2);
+
+        const timeLabel1 = createTextLabel('Time: t', pos1.clone().add(new THREE.Vector3(0, -0.9, 0)), '#6495ED', 28);
+        scene.add(timeLabel1);
+
+        const timeLabel2 = createTextLabel('Time: t+Δt', pos2.clone().add(new THREE.Vector3(0, -0.9, 0)), '#00FF00', 28);
+        scene.add(timeLabel2);
+
+        const deltaFLabel = createTextLabel('Δf = f(r+Δξ·Ω, t+Δt) - f(r, t)', 
+            new THREE.Vector3(0.5, 1.8, 0), '#FFFFFF', 28);
+        scene.add(deltaFLabel);
+
+        // Static photons in volume 1 (cyan)
+        const photons1 = [];
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * 2 * Math.PI;
+            const r = (deltaS/2) * 0.5;
+            const offset = new THREE.Vector3(r * Math.cos(angle), 0, r * Math.sin(angle));
+            offset.applyQuaternion(cylQuaternion);
+            
+            const sphereGeometry = new THREE.SphereGeometry(0.08, 12, 12);
+            const sphereMaterial = new THREE.MeshPhongMaterial({
+                color: 0x00FFFF,
+                emissive: 0x00FFFF,
+                emissiveIntensity: 0.5
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.copy(pos1.clone().add(offset));
+            photons1.push(sphere);
+            scene.add(sphere);
+        }
+
+        // Static photons in volume 2 (green) - same configuration
+        const photons2 = [];
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * 2 * Math.PI;
+            const r = (deltaS/2) * 0.5;
+            const offset = new THREE.Vector3(r * Math.cos(angle), 0, r * Math.sin(angle));
+            offset.applyQuaternion(cylQuaternion);
+            
+            const sphereGeometry = new THREE.SphereGeometry(0.08, 12, 12);
+            const sphereMaterial = new THREE.MeshPhongMaterial({
+                color: 0x00FF00,
+                emissive: 0x00FF00,
+                emissiveIntensity: 0.5
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.position.copy(pos2.clone().add(offset));
+            photons2.push(sphere);
+            scene.add(sphere);
+        }
+
+        const allLabels = [label1, label2, timeLabel1, timeLabel2, deltaFLabel, pathLabel];
+        const pathElements = [pathArrow, markerLine, startTick, endTick];
+        const volumeElements = [volume1, edges1, volume2, edges2];
+
+        // Event listeners
+        document.getElementById('showVolumes').addEventListener('change', (e) => {
+            volumeElements.forEach(el => el.visible = e.target.checked);
+        });
+
+        document.getElementById('showPhotons').addEventListener('change', (e) => {
+            photons1.forEach(p => p.visible = e.target.checked);
+            photons2.forEach(p => p.visible = e.target.checked);
+        });
+
+        document.getElementById('showPath').addEventListener('change', (e) => {
+            pathElements.forEach(el => el.visible = e.target.checked);
+        });
+
+        document.getElementById('showLabels').addEventListener('change', (e) => {
+            allLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('resetView').addEventListener('click', () => {
+            camera.position.set(6, 4, 6);
+            camera.lookAt(0, 0, 0);
+        });
+
+        // Mouse controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                const rotationSpeed = 0.005;
+                const radius = camera.position.length();
+                const theta = Math.atan2(camera.position.x, camera.position.z);
+                const phi = Math.acos(camera.position.y / radius);
+                
+                const newTheta = theta + deltaX * rotationSpeed;
+                const newPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi + deltaY * rotationSpeed));
+                
+                camera.position.x = radius * Math.sin(newPhi) * Math.sin(newTheta);
+                camera.position.y = radius * Math.cos(newPhi);
+                camera.position.z = radius * Math.sin(newPhi) * Math.cos(newTheta);
+                camera.lookAt(0, 0, 0);
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const direction = camera.position.clone().normalize();
+            camera.position.add(direction.multiplyScalar(e.deltaY * zoomSpeed));
+            
+            const dist = camera.position.length();
+            if (dist < 2) camera.position.normalize().multiplyScalar(2);
+            else if (dist > 15) camera.position.normalize().multiplyScalar(15);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            allLabels.forEach(label => label.lookAt(camera.position));
+            
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

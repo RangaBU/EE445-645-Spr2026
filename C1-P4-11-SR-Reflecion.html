@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIR Solar Radiation Reflection in Forest Canopy</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #000;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            max-width: 320px;
+            z-index: 100;
+            border: 1px solid rgba(255, 100, 100, 0.3);
+        }
+        #info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #ff6b6b;
+        }
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+            border: 1px solid rgba(255, 100, 100, 0.3);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        #surface-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 420px;
+            height: 400px;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 100;
+            border: 1px solid rgba(255, 100, 100, 0.3);
+        }
+        #surface-title {
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            z-index: 100;
+            border: 1px solid rgba(255, 100, 100, 0.3);
+        }
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 12px;
+        }
+        button:hover {
+            background: #ff5252;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="info">
+        <h3>NIR Solar Radiation (1.0-1.1 μm)</h3>
+        <p><strong>Solar Zenith Angle:</strong> 60°</p>
+        <p><strong>Wavelength Band:</strong> 1000-1100 nm</p>
+        <p><strong>Incident Irradiance:</strong> <span id="irradiance">285 W/m²</span></p>
+        <p><strong>Canopy Reflectance:</strong> <span id="reflectance">45%</span></p>
+        <p style="font-size: 11px; margin-top: 10px; color: #aaa;">
+            Near-infrared radiation is strongly reflected by healthy vegetation due to cellular structure in leaf mesophyll.
+        </p>
+        <p style="font-size: 11px; margin-top: 8px; color: #ffaa66;">
+            <strong>H-G Scattering (g=-0.8):</strong> Canopy appears brighter when viewed from backscatter direction (satellite view) and darker from forward scatter directions.
+        </p>
+    </div>
+
+    <div class="legend">
+        <div style="font-weight: bold; margin-bottom: 8px;">Radiation Components</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffff00;"></div>
+            <span>Incident Solar (60° zenith)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff6b6b;"></div>
+            <span>Backscattered NIR (to sensor)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff3333;"></div>
+            <span>Satellite Detection</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffcc99;"></div>
+            <span>Transmitted (ground)</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: #aaa;">
+            H-G parameter: g = -0.8 (backscatter)
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="pauseBtn">Pause Radiation</button>
+        <button id="rotateBtn">Pause Rotation</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+
+    <div id="surface-container">
+        <div id="surface-title">Reflectance Factor (3D BRDF Surface)</div>
+        <canvas id="surfacePlot" width="400" height="350"></canvas>
+        <div style="color: #aaa; font-size: 10px; margin-top: 5px; text-align: center;">
+            X=sin(θ)cos(φ), Y=sin(θ)sin(φ), Z=RF
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        console.log('Script started');
+        
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x141824); // Moderate background
+        scene.fog = new THREE.Fog(0x141824, 100, 250);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(80, 60, 80);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('container').appendChild(renderer.domElement);
+        
+        console.log('Renderer created');
+
+        // Define critical constants FIRST (used throughout the code)
+        const satelliteHeight = 70;
+        const sunAngle = 60 * Math.PI / 180; // 60 degrees from vertical
+
+        // Lighting - moderate levels for good visibility
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.6); // Moderate ambient
+        scene.add(ambientLight);
+
+        // Add directional light to illuminate the forest and cast shadows
+        // Light should come FROM the sun position (60° from vertical)
+        const forestLight = new THREE.DirectionalLight(0xffffff, 0.7); // Moderate intensity
+        forestLight.position.set(
+            Math.sin(sunAngle) * 100,  // X position matching sun
+            Math.cos(sunAngle) * 100,  // Y position matching sun
+            0  // Z position matching sun
+        );
+        forestLight.castShadow = true;
+        forestLight.shadow.camera.left = -50;
+        forestLight.shadow.camera.right = 50;
+        forestLight.shadow.camera.top = 50;
+        forestLight.shadow.camera.bottom = -50;
+        forestLight.shadow.mapSize.width = 2048;
+        forestLight.shadow.mapSize.height = 2048;
+        scene.add(forestLight);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x4a3a2a,
+            roughness: 0.9
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(100, 20, 0x555555, 0x333333);
+        scene.add(gridHelper);
+
+        // Forest data
+        const trees = [];
+        const forestSize = 80;
+        
+        // Reflectance factor data: function of viewing angles
+        // Grid: polar angle (0-90°) x azimuthal angle (0-360°)
+        const polarResolution = 18; // 5° increments for polar angle
+        const azimuthResolution = 36; // 10° increments for azimuth
+        const reflectanceFactorGrid = []; // [polar][azimuth] = {reflected, incident, count}
+        
+        // Initialize reflectance factor grid
+        for (let i = 0; i < polarResolution; i++) {
+            reflectanceFactorGrid[i] = [];
+            for (let j = 0; j < azimuthResolution; j++) {
+                reflectanceFactorGrid[i][j] = {
+                    reflected: 0,
+                    incident: 0,
+                    count: 0
+                };
+            }
+        }
+
+        // Define constants FIRST (needed by all functions below)
+        // satelliteHeight and sunAngle already defined at the top
+
+        // Create satellite group early (needed by createTree for brightness calculation)
+        const satelliteGroup = new THREE.Group();
+        satelliteGroup.position.set(0, satelliteHeight, 0);
+
+        // Henyey-Greenstein phase function (needed by createTree)
+        // g = -0.8 (strong backscattering, darker when viewed from backward direction)
+        function henyeyGreenstein(cosTheta, g) {
+            const g2 = g * g;
+            const denominator = Math.pow(1 + g2 - 2 * g * cosTheta, 1.5);
+            return (1 - g2) / (4 * Math.PI * denominator);
+        }
+
+        // Calculate scattering brightness based on viewing angle (needed by createTree)
+        // sunAngle is now defined above
+        function getScatteringBrightness(position, normal, viewDirection, g) {
+            // Incident light direction (from sun, pointing downward at 60°)
+            const incidentDir = new THREE.Vector3(
+                Math.sin(sunAngle),
+                -Math.cos(sunAngle),
+                0
+            ).normalize();
+            
+            // Viewing direction (from surface point toward observer/camera)
+            const viewDir = viewDirection.clone().normalize();
+            
+            // Scattering angle: angle between incident sunlight and viewing direction
+            // For backscattering relative to sun: light comes from sun, scatters back toward sun
+            // cosTheta = -1 means backscatter (viewing opposite to sun direction)
+            // cosTheta = +1 means forward scatter (viewing same as sun direction)
+            const cosTheta = incidentDir.dot(viewDir);
+            
+            // Apply Henyey-Greenstein phase function
+            // g = -0.8 means strong backscattering
+            // When viewing opposite to sun direction (backscatter), phase function is HIGH
+            // When viewing same as sun direction (forward scatter), phase function is LOW
+            const phaseFunction = henyeyGreenstein(cosTheta, g);
+            
+            // Base reflectance modulated by phase function
+            // Moderate scale factor for visible but not extreme contrast
+            return phaseFunction * 35; // Reduced for moderate contrast
+        }
+
+        // Create forest with different age classes
+        function createForest() {
+            for (let i = 0; i < 400; i++) {
+                const x = (Math.random() - 0.5) * forestSize;
+                const z = (Math.random() - 0.5) * forestSize;
+                
+                const rand = Math.random();
+                let height, radius, color, ageClass, nirReflectance;
+                
+                if (rand < 0.3) { // Mature trees
+                    height = 20 + Math.random() * 10;
+                    radius = 2 + Math.random() * 2;
+                    color = 0x2d5016;
+                    ageClass = 'mature';
+                    nirReflectance = 0.48; // High NIR reflectance for healthy mature leaves
+                } else if (rand < 0.6) { // Young trees
+                    height = 10 + Math.random() * 10;
+                    radius = 1.5 + Math.random() * 1.5;
+                    color = 0x4a7c2c;
+                    ageClass = 'young';
+                    nirReflectance = 0.50; // Very high for young healthy leaves
+                } else { // Understory
+                    height = 2 + Math.random() * 8;
+                    radius = 0.8 + Math.random() * 1;
+                    color = 0x6b9d4a;
+                    ageClass = 'understory';
+                    nirReflectance = 0.42; // Moderate due to shading
+                }
+                
+                createTree(x, z, height, radius, color, ageClass, nirReflectance);
+            }
+        }
+
+        function createTree(x, z, height, radius, color, ageClass, nirReflectance) {
+            // Trunk
+            const trunkGeometry = new THREE.CylinderGeometry(radius * 0.2, radius * 0.25, height * 0.4, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x3a2a1a });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.set(x, height * 0.2, z);
+            trunk.castShadow = true;
+            scene.add(trunk);
+
+            // Canopy with Henyey-Greenstein scattering effect
+            const canopyHeight = height * 0.6;
+            const canopyGroup = new THREE.Group();
+            
+            for (let i = 0; i < 3; i++) {
+                const layerRadius = radius * (1 - i * 0.2);
+                const coneGeometry = new THREE.ConeGeometry(layerRadius, canopyHeight / 3, 8);
+                
+                // Calculate view-dependent brightness using Henyey-Greenstein
+                const layerY = height * 0.4 + (canopyHeight / 3) * i;
+                const layerPos = new THREE.Vector3(x, layerY, z);
+                
+                // View direction: from surface toward camera (initially at 80, 60, 80)
+                // We use initial camera position for brightness calculation
+                const initialCameraPos = new THREE.Vector3(80, 60, 80);
+                const viewDir = new THREE.Vector3(
+                    initialCameraPos.x - x,
+                    initialCameraPos.y - layerY,
+                    initialCameraPos.z - z
+                ).normalize();
+                
+                const normal = new THREE.Vector3(0, 1, 0);
+                const brightness = getScatteringBrightness(layerPos, normal, viewDir, -0.8);
+                
+                // Modulate base color by scattering brightness
+                // With g=-0.8, backscatter viewing (opposite to sun) should be BRIGHTER
+                // Use moderate contrast: 0.15-1.2 range
+                const baseColor = new THREE.Color(color);
+                const brightnessMultiplier = 0.15 + brightness * 1.05;
+                const modulatedColor = baseColor.clone().multiplyScalar(Math.min(1.8, brightnessMultiplier));
+                
+                const canopyMaterial = new THREE.MeshStandardMaterial({ 
+                    color: modulatedColor,
+                    roughness: 0.75,
+                    emissive: modulatedColor,
+                    emissiveIntensity: Math.min(0.35, brightnessMultiplier * 0.3)
+                });
+                const cone = new THREE.Mesh(coneGeometry, canopyMaterial);
+                cone.position.y = layerY;
+                cone.castShadow = true;
+                canopyGroup.add(cone);
+            }
+            
+            canopyGroup.position.set(x, 0, z);
+            scene.add(canopyGroup);
+
+            trees.push({
+                x: x,
+                z: z,
+                height: height,
+                radius: radius,
+                ageClass: ageClass,
+                nirReflectance: nirReflectance,
+                elements: [trunk, canopyGroup]
+            });
+        }
+
+        createForest();
+        
+        console.log('Forest created with', trees.length, 'trees');
+
+        // Sun representation and incident rays
+        const sunDistance = 100;
+        // Sun at 60° from vertical means it's lower in the sky
+        // Position sun in the direction light is coming FROM
+        const sunPosition = new THREE.Vector3(
+            Math.sin(sunAngle) * sunDistance,  // X component (horizontal offset)
+            Math.cos(sunAngle) * sunDistance,  // Y component (height - lower for 60°)
+            0  // Z component
+        );
+
+        // Create visual sun
+        const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
+        const sunMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00,
+            emissive: 0xffff00,
+            emissiveIntensity: 1
+        });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        sun.position.copy(sunPosition);
+        scene.add(sun);
+
+        // Sun glow
+        const glowGeometry = new THREE.SphereGeometry(4, 32, 32);
+        const glowMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00,
+            transparent: true,
+            opacity: 0.3
+        });
+        const sunGlow = new THREE.Mesh(glowGeometry, glowMaterial);
+        sunGlow.position.copy(sunPosition);
+        scene.add(sunGlow);
+
+        // Add satellite components to the satelliteGroup (group was created earlier)
+        // Satellite body
+        const satelliteGeometry = new THREE.BoxGeometry(3, 1, 4);
+        const satelliteMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x888888,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const satelliteBody = new THREE.Mesh(satelliteGeometry, satelliteMaterial);
+        satelliteGroup.add(satelliteBody);
+
+        // Solar panels
+        const panelGeometry = new THREE.BoxGeometry(5, 0.1, 2);
+        const panelMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1a1a3a,
+            metalness: 0.5
+        });
+        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+        panel.position.set(0, 0.6, 0);
+        satelliteGroup.add(panel);
+
+        // NIR sensor/detector
+        const sensorGeometry = new THREE.CylinderGeometry(0.4, 0.5, 1.2, 16);
+        const sensorMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x333333,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const sensor = new THREE.Mesh(sensorGeometry, sensorMaterial);
+        sensor.position.set(0, -1, 0);
+        satelliteGroup.add(sensor);
+
+        // Sensor aperture (receiving NIR)
+        const apertureGeometry = new THREE.CylinderGeometry(0.45, 0.45, 0.2, 16);
+        const apertureMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xff3333,
+            emissive: 0xff3333,
+            emissiveIntensity: 0.4,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const aperture = new THREE.Mesh(apertureGeometry, apertureMaterial);
+        aperture.position.set(0, -1.6, 0);
+        satelliteGroup.add(aperture);
+
+        // Add satellite to scene
+        scene.add(satelliteGroup);
+
+        // Incident solar rays
+        const incidentRays = [];
+        const reflectedPhotons = [];
+        const transmittedPhotons = [];
+
+        function createIncidentRay(targetX, targetZ) {
+            // Ray starts from sun direction and goes toward forest
+            const rayLength = 15;
+            const rayGeometry = new THREE.CylinderGeometry(0.08, 0.08, rayLength, 8);
+            const rayMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.7
+            });
+            const ray = new THREE.Mesh(rayGeometry, rayMaterial);
+            
+            // Position ray at an angle
+            const startHeight = 70;
+            const dx = -Math.sin(sunAngle) * rayLength / 2;
+            const dy = -Math.cos(sunAngle) * rayLength / 2;
+            
+            ray.position.set(targetX - dx, startHeight + dy, targetZ);
+            ray.rotation.z = -sunAngle;
+            
+            scene.add(ray);
+            
+            return {
+                mesh: ray,
+                targetX: targetX,
+                targetZ: targetZ,
+                currentY: startHeight,
+                phase: 'incident'
+            };
+        }
+
+        // Update incident rays
+        function updateIncidentRays() {
+            for (let i = incidentRays.length - 1; i >= 0; i--) {
+                const ray = incidentRays[i];
+                
+                // Move ray downward along its angled path
+                ray.currentY -= 1.2;
+                const dx = -Math.sin(sunAngle) * 7.5;
+                const dy = -Math.cos(sunAngle) * 7.5;
+                ray.mesh.position.set(
+                    ray.targetX - dx + (70 - ray.currentY) * Math.sin(sunAngle),
+                    ray.currentY + dy,
+                    ray.targetZ
+                );
+                
+                // Check intersection with trees
+                const hit = checkRayIntersection(ray.targetX, ray.targetZ, ray.currentY);
+                
+                if (hit) {
+                    // Create reflected photons
+                    createReflectedPhoton(ray.targetX, ray.targetZ, hit.height, hit.reflectance);
+                    
+                    // Some light is transmitted through canopy
+                    if (Math.random() > 0.6) { // 40% transmission
+                        createTransmittedPhoton(ray.targetX, ray.targetZ, hit.height);
+                    }
+                    
+                    // Update reflectance factor grid based on viewing angles
+                    // Calculate viewing direction from hit point to satellite
+                    const dx = satelliteGroup.position.x - ray.targetX;
+                    const dy = satelliteGroup.position.y - hit.height;
+                    const dz = satelliteGroup.position.z - ray.targetZ;
+                    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    
+                    // Polar angle (from zenith, 0-90°)
+                    const polarAngle = Math.acos(dy / dist); // angle from vertical
+                    const polarBin = Math.floor((polarAngle / (Math.PI/2)) * polarResolution);
+                    
+                    // Azimuthal angle (0-360°)
+                    let azimuthAngle = Math.atan2(dz, dx); // -π to π
+                    if (azimuthAngle < 0) azimuthAngle += 2 * Math.PI; // 0 to 2π
+                    const azimuthBin = Math.floor((azimuthAngle / (2*Math.PI)) * azimuthResolution);
+                    
+                    if (polarBin >= 0 && polarBin < polarResolution && 
+                        azimuthBin >= 0 && azimuthBin < azimuthResolution) {
+                        const irradiance = 285; // W/m² for NIR band
+                        reflectanceFactorGrid[polarBin][azimuthBin].incident += irradiance;
+                        reflectanceFactorGrid[polarBin][azimuthBin].reflected += irradiance * hit.reflectance;
+                        reflectanceFactorGrid[polarBin][azimuthBin].count++;
+                    }
+                    
+                    scene.remove(ray.mesh);
+                    incidentRays.splice(i, 1);
+                } else if (ray.currentY < 0) {
+                    // Hit ground
+                    createTransmittedPhoton(ray.targetX, ray.targetZ, 0);
+                    scene.remove(ray.mesh);
+                    incidentRays.splice(i, 1);
+                }
+            }
+        }
+
+        function checkRayIntersection(x, z, currentY) {
+            for (const tree of trees) {
+                const dx = x - tree.x;
+                const dz = z - tree.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < tree.radius && currentY <= tree.height && currentY >= tree.height * 0.3) {
+                    return {
+                        height: currentY,
+                        reflectance: tree.nirReflectance,
+                        type: tree.ageClass
+                    };
+                }
+            }
+            return null;
+        }
+
+        // Create reflected photon (NIR reflection toward satellite)
+        function createReflectedPhoton(x, z, hitHeight, reflectance) {
+            const photonGeometry = new THREE.SphereGeometry(0.25, 8, 8);
+            const photonMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff3333,
+                transparent: true,
+                opacity: 1.0
+            });
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            
+            // Add glow to make it more visible
+            const glowGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+            const glowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff6b6b,
+                transparent: true,
+                opacity: 0.5
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            photon.add(glow);
+            
+            // Start at hit point
+            photon.position.set(x, hitHeight, z);
+            scene.add(photon);
+            
+            // Calculate direction toward satellite (backscatter)
+            const toSatellite = new THREE.Vector3(
+                satelliteGroup.position.x - x,
+                satelliteGroup.position.y - hitHeight,
+                satelliteGroup.position.z - z
+            ).normalize();
+            
+            // Add some randomness to simulate scattering cone
+            const randomOffset = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * 0.3
+            );
+            toSatellite.add(randomOffset).normalize();
+            
+            // Most photons go toward satellite (backscatter dominant with g=-0.8)
+            const shouldBackscatter = Math.random() < 0.85; // 85% backscatter
+            
+            // Create trail line for backscattered photons
+            let trail = null;
+            if (shouldBackscatter) {
+                const trailGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
+                const trailMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xff6b6b,
+                    transparent: true,
+                    opacity: 0.4
+                });
+                trail = new THREE.Mesh(trailGeometry, trailMaterial);
+                trail.position.y = 0.5;
+                photon.add(trail);
+            }
+            
+            if (shouldBackscatter) {
+                reflectedPhotons.push({
+                    mesh: photon,
+                    velocity: toSatellite.multiplyScalar(2.5),
+                    age: 0,
+                    intensity: reflectance,
+                    toSatellite: true,
+                    trail: trail,
+                    startPos: new THREE.Vector3(x, hitHeight, z)
+                });
+            } else {
+                // Some forward scatter
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI / 2;
+                reflectedPhotons.push({
+                    mesh: photon,
+                    velocity: new THREE.Vector3(
+                        Math.sin(phi) * Math.cos(theta) * 1.5,
+                        Math.cos(phi) * 2,
+                        Math.sin(phi) * Math.sin(theta) * 1.5
+                    ),
+                    age: 0,
+                    intensity: reflectance,
+                    toSatellite: false,
+                    trail: null,
+                    startPos: new THREE.Vector3(x, hitHeight, z)
+                });
+            }
+        }
+
+        // Create transmitted photon (light passing through canopy)
+        function createTransmittedPhoton(x, z, startHeight) {
+            const photonGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const photonMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffcc99,
+                transparent: true,
+                opacity: 0.6
+            });
+            const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+            photon.position.set(x, startHeight, z);
+            scene.add(photon);
+            
+            transmittedPhotons.push({
+                mesh: photon,
+                startHeight: startHeight,
+                age: 0
+            });
+        }
+
+        // Update reflected photons
+        function updateReflectedPhotons() {
+            for (let i = reflectedPhotons.length - 1; i >= 0; i--) {
+                const photon = reflectedPhotons[i];
+                
+                photon.mesh.position.add(photon.velocity);
+                photon.age++;
+                
+                // Update trail length if it exists
+                if (photon.trail) {
+                    const travelDist = photon.mesh.position.distanceTo(photon.startPos);
+                    photon.trail.scale.y = travelDist;
+                    photon.trail.position.y = travelDist / 2;
+                }
+                
+                // Check if reached satellite
+                if (photon.toSatellite) {
+                    const distToSat = photon.mesh.position.distanceTo(satelliteGroup.position);
+                    if (distToSat < 3) {
+                        // Photon detected by satellite - create flash
+                        createDetectionFlash(photon.mesh.position.clone());
+                        scene.remove(photon.mesh);
+                        reflectedPhotons.splice(i, 1);
+                        continue;
+                    }
+                }
+                
+                // Fade out more slowly to keep photons visible
+                photon.mesh.material.opacity = Math.max(0, 1.0 - photon.age / 50);
+                
+                if (photon.age > 60 || photon.mesh.position.y > 100) {
+                    scene.remove(photon.mesh);
+                    reflectedPhotons.splice(i, 1);
+                }
+            }
+        }
+
+        // Detection flashes when photons reach satellite
+        const detectionFlashes = [];
+        
+        function createDetectionFlash(position) {
+            const flashGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const flashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                transparent: true,
+                opacity: 1.0
+            });
+            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+            flash.position.copy(position);
+            scene.add(flash);
+            
+            // Add outer glow
+            const glowGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff6b6b,
+                transparent: true,
+                opacity: 0.6
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            flash.add(glow);
+            
+            detectionFlashes.push({
+                mesh: flash,
+                age: 0
+            });
+        }
+
+        function updateDetectionFlashes() {
+            for (let i = detectionFlashes.length - 1; i >= 0; i--) {
+                const flash = detectionFlashes[i];
+                flash.age++;
+                
+                // Expand and fade
+                const scale = 1 + flash.age * 0.15;
+                flash.mesh.scale.set(scale, scale, scale);
+                flash.mesh.material.opacity = Math.max(0, 1 - flash.age / 20);
+                
+                if (flash.age > 20) {
+                    scene.remove(flash.mesh);
+                    detectionFlashes.splice(i, 1);
+                }
+            }
+        }
+
+        // Update transmitted photons
+        function updateTransmittedPhotons() {
+            for (let i = transmittedPhotons.length - 1; i >= 0; i--) {
+                const photon = transmittedPhotons[i];
+                
+                photon.mesh.position.y -= 0.8;
+                photon.age++;
+                
+                photon.mesh.material.opacity = Math.max(0, 0.6 - photon.age / 40);
+                
+                if (photon.mesh.position.y < 0) {
+                    scene.remove(photon.mesh);
+                    transmittedPhotons.splice(i, 1);
+                }
+            }
+        }
+
+        // 3D Surface Plot - Cartesian representation with RF as height
+        const surfaceCanvas = document.getElementById('surfacePlot');
+        const surfaceCtx = surfaceCanvas.getContext('2d');
+
+        function drawSurfacePlot() {
+            surfaceCtx.clearRect(0, 0, surfaceCanvas.width, surfaceCanvas.height);
+            
+            const width = surfaceCanvas.width;
+            const height = surfaceCanvas.height;
+            const centerX = width / 2;
+            const centerY = height * 0.6; // Lower center for better view
+            
+            // 3D projection parameters
+            const rotX = 0.6; // Tilt to see surface from above
+            const rotZ = Date.now() * 0.0003; // Slow rotation
+            
+            // Calculate reflectance factors
+            const reflectanceFactors = [];
+            let maxFactor = 0;
+            
+            for (let i = 0; i < polarResolution; i++) {
+                reflectanceFactors[i] = [];
+                for (let j = 0; j < azimuthResolution; j++) {
+                    const data = reflectanceFactorGrid[i][j];
+                    let factor = 0;
+                    if (data.incident > 0) {
+                        factor = data.reflected / data.incident; // Reflectance factor
+                    }
+                    reflectanceFactors[i][j] = factor;
+                    maxFactor = Math.max(maxFactor, factor);
+                }
+            }
+            
+            if (maxFactor === 0) maxFactor = 0.01;
+            
+            // Scaling factors
+            const xyScale = 140; // Scale for X and Y (sin(θ)cos(φ), sin(θ)sin(φ))
+            const zScale = 80;   // Scale for Z (reflectance factor height)
+            
+            // Create array of quads with depth for sorting
+            const quads = [];
+            
+            // Build all quads
+            for (let i = 0; i < polarResolution - 1; i++) {
+                for (let j = 0; j < azimuthResolution - 1; j++) {
+                    // Polar angles
+                    const theta1 = (i / polarResolution) * (Math.PI / 2); // 0 to π/2
+                    const theta2 = ((i + 1) / polarResolution) * (Math.PI / 2);
+                    
+                    const phi1 = (j / azimuthResolution) * (2 * Math.PI); // 0 to 2π
+                    const phi2 = ((j + 1) / azimuthResolution) * (2 * Math.PI);
+                    
+                    // Reflectance factors (Z values - height)
+                    const rf1 = reflectanceFactors[i][j];
+                    const rf2 = reflectanceFactors[i + 1][j];
+                    const rf3 = reflectanceFactors[i + 1][(j + 1) % azimuthResolution];
+                    const rf4 = reflectanceFactors[i][(j + 1) % azimuthResolution];
+                    
+                    const avgRF = (rf1 + rf2 + rf3 + rf4) / 4;
+                    
+                    // Skip if no data
+                    if (avgRF < 0.001) continue;
+                    
+                    // Four corners of the quad
+                    // X = sin(θ) * cos(φ)
+                    // Y = sin(θ) * sin(φ)
+                    // Z = reflectance factor
+                    
+                    const p1 = {
+                        x: Math.sin(theta1) * Math.cos(phi1) * xyScale,
+                        y: Math.sin(theta1) * Math.sin(phi1) * xyScale,
+                        z: rf1 * zScale
+                    };
+                    const p2 = {
+                        x: Math.sin(theta2) * Math.cos(phi1) * xyScale,
+                        y: Math.sin(theta2) * Math.sin(phi1) * xyScale,
+                        z: rf2 * zScale
+                    };
+                    const p3 = {
+                        x: Math.sin(theta2) * Math.cos(phi2) * xyScale,
+                        y: Math.sin(theta2) * Math.sin(phi2) * xyScale,
+                        z: rf3 * zScale
+                    };
+                    const p4 = {
+                        x: Math.sin(theta1) * Math.cos(phi2) * xyScale,
+                        y: Math.sin(theta1) * Math.sin(phi2) * xyScale,
+                        z: rf4 * zScale
+                    };
+                    
+                    // Calculate average depth for sorting (use Y coordinate after rotation)
+                    const avgY = (p1.y + p2.y + p3.y + p4.y) / 4;
+                    const avgZ = (p1.z + p2.z + p3.z + p4.z) / 4;
+                    
+                    quads.push({
+                        points: [p1, p2, p3, p4],
+                        depth: avgY - avgZ * 0.3, // Combined depth
+                        reflectance: avgRF,
+                        maxFactor: maxFactor,
+                        theta: (theta1 + theta2) / 2
+                    });
+                }
+            }
+            
+            // Sort quads by depth (back to front)
+            quads.sort((a, b) => a.depth - b.depth);
+            
+            // Draw quads
+            for (const quad of quads) {
+                // Project to 2D screen coordinates
+                const s1 = project3D(quad.points[0].x, quad.points[0].y, quad.points[0].z, rotX, rotZ, 1, centerX, centerY);
+                const s2 = project3D(quad.points[1].x, quad.points[1].y, quad.points[1].z, rotX, rotZ, 1, centerX, centerY);
+                const s3 = project3D(quad.points[2].x, quad.points[2].y, quad.points[2].z, rotX, rotZ, 1, centerX, centerY);
+                const s4 = project3D(quad.points[3].x, quad.points[3].y, quad.points[3].z, rotX, rotZ, 1, centerX, centerY);
+                
+                // Color based on reflectance factor (height)
+                const colorIntensity = quad.reflectance / quad.maxFactor;
+                
+                // Vibrant color scheme
+                let red, green, blue;
+                if (colorIntensity < 0.25) {
+                    // Blue to cyan
+                    const t = colorIntensity / 0.25;
+                    red = 0;
+                    green = Math.floor(t * 255);
+                    blue = 255;
+                } else if (colorIntensity < 0.5) {
+                    // Cyan to green
+                    const t = (colorIntensity - 0.25) / 0.25;
+                    red = 0;
+                    green = 255;
+                    blue = Math.floor(255 * (1 - t));
+                } else if (colorIntensity < 0.75) {
+                    // Green to yellow
+                    const t = (colorIntensity - 0.5) / 0.25;
+                    red = Math.floor(t * 255);
+                    green = 255;
+                    blue = 0;
+                } else {
+                    // Yellow to red
+                    const t = (colorIntensity - 0.75) / 0.25;
+                    red = 255;
+                    green = Math.floor(255 * (1 - t));
+                    blue = 0;
+                }
+                
+                // Add shading based on surface angle
+                const shading = 0.5 + Math.cos(quad.theta) * 0.5;
+                red = Math.floor(red * shading);
+                green = Math.floor(green * shading);
+                blue = Math.floor(blue * shading);
+                
+                // Draw filled quad
+                surfaceCtx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+                surfaceCtx.beginPath();
+                surfaceCtx.moveTo(s1.x, s1.y);
+                surfaceCtx.lineTo(s2.x, s2.y);
+                surfaceCtx.lineTo(s3.x, s3.y);
+                surfaceCtx.lineTo(s4.x, s4.y);
+                surfaceCtx.closePath();
+                surfaceCtx.fill();
+                
+                // Draw wireframe
+                surfaceCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                surfaceCtx.lineWidth = 0.5;
+                surfaceCtx.stroke();
+            }
+            
+            // Draw reference base plane (Z=0)
+            surfaceCtx.strokeStyle = 'rgba(150, 150, 150, 0.4)';
+            surfaceCtx.lineWidth = 1;
+            
+            // Draw circular base (sin²θ = x² + y² ≤ 1)
+            surfaceCtx.beginPath();
+            for (let k = 0; k <= 64; k++) {
+                const angle = (k / 64) * (2 * Math.PI);
+                const x = Math.cos(angle) * xyScale;
+                const y = Math.sin(angle) * xyScale;
+                const sp = project3D(x, y, 0, rotX, rotZ, 1, centerX, centerY);
+                if (k === 0) surfaceCtx.moveTo(sp.x, sp.y);
+                else surfaceCtx.lineTo(sp.x, sp.y);
+            }
+            surfaceCtx.stroke();
+            
+            // Draw radial grid lines on base
+            for (let k = 0; k < 8; k++) {
+                const angle = (k / 8) * (2 * Math.PI);
+                const x = Math.cos(angle) * xyScale;
+                const y = Math.sin(angle) * xyScale;
+                const origin = project3D(0, 0, 0, rotX, rotZ, 1, centerX, centerY);
+                const edge = project3D(x, y, 0, rotX, rotZ, 1, centerX, centerY);
+                surfaceCtx.beginPath();
+                surfaceCtx.moveTo(origin.x, origin.y);
+                surfaceCtx.lineTo(edge.x, edge.y);
+                surfaceCtx.stroke();
+            }
+            
+            // Draw Z axis (vertical)
+            const origin = project3D(0, 0, 0, rotX, rotZ, 1, centerX, centerY);
+            const zTop = project3D(0, 0, zScale * 1.2, rotX, rotZ, 1, centerX, centerY);
+            surfaceCtx.strokeStyle = '#888888';
+            surfaceCtx.lineWidth = 2;
+            surfaceCtx.beginPath();
+            surfaceCtx.moveTo(origin.x, origin.y);
+            surfaceCtx.lineTo(zTop.x, zTop.y);
+            surfaceCtx.stroke();
+            
+            // Draw X axis
+            const xAxis = project3D(xyScale * 1.1, 0, 0, rotX, rotZ, 1, centerX, centerY);
+            surfaceCtx.strokeStyle = '#666666';
+            surfaceCtx.lineWidth = 1.5;
+            surfaceCtx.beginPath();
+            surfaceCtx.moveTo(origin.x, origin.y);
+            surfaceCtx.lineTo(xAxis.x, xAxis.y);
+            surfaceCtx.stroke();
+            
+            // Draw Y axis
+            const yAxis = project3D(0, xyScale * 1.1, 0, rotX, rotZ, 1, centerX, centerY);
+            surfaceCtx.beginPath();
+            surfaceCtx.moveTo(origin.x, origin.y);
+            surfaceCtx.lineTo(yAxis.x, yAxis.y);
+            surfaceCtx.stroke();
+            
+            // Labels
+            surfaceCtx.fillStyle = '#ffffff';
+            surfaceCtx.font = 'bold 11px sans-serif';
+            surfaceCtx.fillText('Z (RF)', zTop.x + 5, zTop.y);
+            surfaceCtx.fillText('X', xAxis.x + 5, xAxis.y);
+            surfaceCtx.fillText('Y', yAxis.x, yAxis.y + 15);
+            
+            // Add scale labels
+            surfaceCtx.font = '9px sans-serif';
+            surfaceCtx.fillStyle = '#aaaaaa';
+            surfaceCtx.fillText('sin(θ)cos(φ)', xAxis.x - 20, xAxis.y + 20);
+            surfaceCtx.fillText('sin(θ)sin(φ)', yAxis.x - 35, yAxis.y - 5);
+            
+            // Color scale legend
+            const legendX = 20;
+            const legendY = height - 80;
+            const legendWidth = 15;
+            const legendHeight = 60;
+            
+            surfaceCtx.font = '10px sans-serif';
+            surfaceCtx.fillStyle = '#ffffff';
+            surfaceCtx.fillText('Reflectance', legendX, legendY - 10);
+            surfaceCtx.fillText('Factor', legendX + 5, legendY - 0);
+            
+            // Draw color gradient (top to bottom = high to low)
+            for (let i = 0; i < legendHeight; i++) {
+                const t = 1 - (i / legendHeight); // Reverse
+                let r, g, b;
+                if (t < 0.25) {
+                    const tt = t / 0.25;
+                    r = 0;
+                    g = Math.floor(tt * 255);
+                    b = 255;
+                } else if (t < 0.5) {
+                    const tt = (t - 0.25) / 0.25;
+                    r = 0;
+                    g = 255;
+                    b = Math.floor(255 * (1 - tt));
+                } else if (t < 0.75) {
+                    const tt = (t - 0.5) / 0.25;
+                    r = Math.floor(tt * 255);
+                    g = 255;
+                    b = 0;
+                } else {
+                    const tt = (t - 0.75) / 0.25;
+                    r = 255;
+                    g = Math.floor(255 * (1 - tt));
+                    b = 0;
+                }
+                surfaceCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                surfaceCtx.fillRect(legendX, legendY + i + 10, legendWidth, 2);
+            }
+            
+            surfaceCtx.fillStyle = '#ffffff';
+            surfaceCtx.fillText(maxFactor.toFixed(2), legendX + legendWidth + 3, legendY + 15);
+            surfaceCtx.fillText((maxFactor * 0.5).toFixed(2), legendX + legendWidth + 3, legendY + legendHeight / 2 + 10);
+            surfaceCtx.fillText('0.00', legendX + legendWidth + 3, legendY + legendHeight + 10);
+        }
+
+        function project3D(x, y, z, rotX, rotZ, scale, cx, cy) {
+            // Rotate around X axis
+            let y1 = y * Math.cos(rotX) - z * Math.sin(rotX);
+            let z1 = y * Math.sin(rotX) + z * Math.cos(rotX);
+            
+            // Rotate around Z axis (vertical axis in screen space)
+            let x2 = x * Math.cos(rotZ) - y1 * Math.sin(rotZ);
+            let y2 = x * Math.sin(rotZ) + y1 * Math.cos(rotZ);
+            
+            return {
+                x: cx + x2 * scale,
+                y: cy - y2 * scale - z1 * scale * 0.5
+            };
+        }
+
+        // Animation control
+        let paused = false;
+        let rotationPaused = false;
+        let frameCount = 0;
+
+        // Controls
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            paused = !paused;
+            document.getElementById('pauseBtn').textContent = paused ? 'Resume Radiation' : 'Pause Radiation';
+        });
+
+        document.getElementById('rotateBtn').addEventListener('click', () => {
+            rotationPaused = !rotationPaused;
+            document.getElementById('rotateBtn').textContent = rotationPaused ? 'Resume Rotation' : 'Pause Rotation';
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            // Clear all photons
+            incidentRays.forEach(ray => scene.remove(ray.mesh));
+            incidentRays.length = 0;
+            reflectedPhotons.forEach(p => scene.remove(p.mesh));
+            reflectedPhotons.length = 0;
+            transmittedPhotons.forEach(p => scene.remove(p.mesh));
+            transmittedPhotons.length = 0;
+            detectionFlashes.forEach(f => scene.remove(f.mesh));
+            detectionFlashes.length = 0;
+            
+            // Reset reflectance factor grid
+            for (let i = 0; i < polarResolution; i++) {
+                for (let j = 0; j < azimuthResolution; j++) {
+                    reflectanceFactorGrid[i][j] = {
+                        reflected: 0,
+                        incident: 0,
+                        count: 0
+                    };
+                }
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!paused) {
+                frameCount++;
+                
+                // Create incident rays at regular intervals
+                if (frameCount % 3 === 0) {
+                    const x = (Math.random() - 0.5) * forestSize;
+                    const z = (Math.random() - 0.5) * forestSize;
+                    incidentRays.push(createIncidentRay(x, z));
+                }
+                
+                updateIncidentRays();
+                updateReflectedPhotons();
+                updateTransmittedPhotons();
+                updateDetectionFlashes();
+                drawSurfacePlot();
+                
+                // Decay reflectance factor grid slowly
+                if (frameCount % 5 === 0) {
+                    for (let i = 0; i < polarResolution; i++) {
+                        for (let j = 0; j < azimuthResolution; j++) {
+                            reflectanceFactorGrid[i][j].reflected *= 0.98;
+                            reflectanceFactorGrid[i][j].incident *= 0.98;
+                        }
+                    }
+                }
+            }
+            
+            // Rotate camera slowly (only if not paused)
+            if (!rotationPaused) {
+                const time = Date.now() * 0.0001;
+                camera.position.x = Math.cos(time) * 80;
+                camera.position.z = Math.sin(time) * 80;
+            }
+            camera.lookAt(0, 15, 0);
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        console.log('Starting animation...');
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Absorption - 3D Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 220px;
+            font-size: 12px;
+        }
+        h2 {
+            margin: 0 0 10px 0;
+            color: #1a1a2e;
+            font-size: 16px;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 5px;
+        }
+        label {
+            display: block;
+            margin: 8px 0 3px 0;
+            color: #333;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        button {
+            width: 100%;
+            padding: 8px;
+            margin: 6px 0;
+            background: #0f3460;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #16213e;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        input[type="checkbox"] {
+            margin-right: 6px;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            font-size: 11px;
+            max-width: 280px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+        .legend-color {
+            width: 30px;
+            height: 15px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            max-width: 300px;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        .equation {
+            background: #f0f0f0;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            line-height: 1.5;
+        }
+        .vector {
+            font-weight: bold;
+            position: relative;
+            display: inline-block;
+        }
+        .vector.omega::after {
+            content: '→';
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .section-label {
+            font-weight: bold;
+            color: #0f3460;
+            margin-top: 10px;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        .highlight {
+            background: #ffffcc;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <h2>Controls</h2>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showVolume" checked>
+            <label for="showVolume">Show Volume Element</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showPath" checked>
+            <label for="showPath">Show Path Δξ</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showPhotons" checked>
+            <label for="showPhotons">Show Static Photons</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showAbsorbed" checked>
+            <label for="showAbsorbed">Show Static Absorbed</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showHost" checked>
+            <label for="showHost">Show Host Material</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="showLabels" checked>
+            <label for="showLabels">Show Labels</label>
+        </div>
+        <div class="checkbox-container">
+            <input type="checkbox" id="restartAnimation">
+            <label for="restartAnimation">Enable Animation</label>
+        </div>
+        <button id="resetView">Reset View</button>
+    </div>
+
+    <div id="info">
+        <h2 style="font-size: 14px; margin-top: 0;">Absorption Process</h2>
+        
+        <div class="section-label">Volume Element:</div>
+        <div class="equation">
+            Δ<span class="vector">r</span> = ΔS Δξ
+        </div>
+        
+        <div class="section-label">Photon Properties:</div>
+        <p style="margin: 4px 0; color: #333;">
+            • Frequency: (ν, ν+Δν)<br>
+            • Direction: <span class="vector omega">Ω</span><br>
+            • Solid angle: Δ<span class="vector omega">Ω</span><br>
+            • Distance traveled: Δξ<br>
+            • Speed: c<br>
+            • Time interval: Δt
+        </p>
+        
+        <div class="section-label">Absorbed Photon Count:</div>
+        <div class="equation">
+[f(<span class="vector">r</span>,ν,<span class="vector omega">Ω</span>,t) ΔS Δξ Δν Δ<span class="vector omega">Ω</span>]
+× [σ<sub>a</sub>(<span class="vector">r</span>,ν,<span class="vector omega">Ω</span>,t) c Δt]
+        </div>
+        
+        <p style="margin: 6px 0; color: #333; font-size: 10px;">
+            <b>f</b>: photon distribution function<br>
+            <b>σ<sub>a</sub></b>: absorption coefficient
+        </p>
+    </div>
+
+    <div id="legend">
+        <h2 style="font-size: 14px; margin-top: 0;">Legend</h2>
+        <div class="legend-item">
+            <div class="legend-color" style="background: rgba(100, 149, 237, 0.4); border: 2px solid #6495ED;"></div>
+            <span>Volume ΔS·Δξ at point <span class="vector">r</span></span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FFFFFF; border: 1px solid #999;"></div>
+            <span>Host Material</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FFD700;"></div>
+            <span>Path length Δξ</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00FF00;"></div>
+            <span>Photons (green, static & animated)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: linear-gradient(to right, #FFFF00, #FF4444);"></div>
+            <span>Bright flash (collision/absorption)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #FF4444;"></div>
+            <span>Absorbed photons (turn red)</span>
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 5, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        const pointLight = new THREE.PointLight(0x6495ED, 0.5);
+        pointLight.position.set(-5, 5, -5);
+        scene.add(pointLight);
+
+        // Helper function to create text labels with proper vector notation
+        function createTextLabel(text, position, color = '#FFFFFF', fontSize = 40) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 128;
+            
+            // Background for better visibility
+            context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            context.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 10);
+            context.fill();
+            
+            // For vectors with arrow (Ω or r)
+            if (text.includes('⃗')) {
+                const baseText = text.replace('⃗', '');
+                context.font = `bold ${fontSize}px Arial`;
+                context.fillStyle = color;
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                
+                // Draw the base character (bold)
+                context.fillText(baseText, canvas.width / 2, canvas.height / 2 + 5);
+                
+                // Measure text width to position arrow
+                const textWidth = context.measureText(baseText).width;
+                
+                const arrowX = canvas.width / 2;
+                const arrowY = canvas.height / 2 - fontSize * 0.45;
+                const arrowWidth = textWidth * 0.9;
+                const arrowHeight = fontSize * 0.15;
+                
+                // Draw arrow over the character
+                context.beginPath();
+                context.moveTo(arrowX - arrowWidth/2, arrowY);
+                context.lineTo(arrowX + arrowWidth/2, arrowY);
+                context.strokeStyle = color;
+                context.lineWidth = 3;
+                context.stroke();
+                
+                // Arrow head
+                context.beginPath();
+                context.moveTo(arrowX + arrowWidth/2, arrowY);
+                context.lineTo(arrowX + arrowWidth/2 - arrowHeight, arrowY - arrowHeight/2);
+                context.lineTo(arrowX + arrowWidth/2 - arrowHeight, arrowY + arrowHeight/2);
+                context.closePath();
+                context.fillStyle = color;
+                context.fill();
+            } else {
+                // Regular text
+                context.font = `bold ${fontSize}px Arial`;
+                context.fillStyle = color;
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.fillText(text, canvas.width / 2, canvas.height / 2);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(2, 0.5, 1);
+            sprite.position.copy(position);
+            
+            return sprite;
+        }
+
+        // Helper function to create arrows
+        function createArrow(origin, direction, length, color, linewidth = 3) {
+            const arrow = new THREE.ArrowHelper(
+                direction.normalize(),
+                origin,
+                length,
+                color,
+                0.3,
+                0.2
+            );
+            arrow.line.material.linewidth = linewidth;
+            return arrow;
+        }
+
+        // Helper function to create particle with sphere
+        function createParticleWithSphere(origin, direction, length, color, sphereRadius = 0.12, showTail = false) {
+            const group = new THREE.Group();
+            
+            // Create arrow
+            const arrow = new THREE.ArrowHelper(
+                direction.normalize(),
+                origin,
+                length,
+                color,
+                0.3,
+                0.2
+            );
+            arrow.line.material.linewidth = 2;
+            group.add(arrow);
+            
+            // Create sphere at the tip
+            const sphereGeometry = new THREE.SphereGeometry(sphereRadius, 16, 16);
+            const sphereMaterial = new THREE.MeshPhongMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.4
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            
+            const tipPosition = origin.clone().add(direction.clone().normalize().multiplyScalar(length));
+            sphere.position.copy(tipPosition);
+            group.add(sphere);
+            
+            // Optionally add tail (line extending backward from arrow origin)
+            if (showTail) {
+                const tailLength = 0.4;
+                const tailStart = origin.clone();
+                const tailEnd = origin.clone().add(direction.clone().normalize().multiplyScalar(-tailLength));
+                
+                const tailGeometry = new THREE.BufferGeometry().setFromPoints([tailStart, tailEnd]);
+                const tailMaterial = new THREE.LineBasicMaterial({ 
+                    color: color, 
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                const tail = new THREE.Line(tailGeometry, tailMaterial);
+                group.add(tail);
+            }
+            
+            return group;
+        }
+
+        // Define the main direction Ω
+        const omegaDirection = new THREE.Vector3(1, 0, 0).normalize();
+
+        // Create cross-sectional area ΔS (perpendicular to Ω)
+        const deltaS = 1.5;
+        const crossSectionGeometry = new THREE.PlaneGeometry(deltaS, deltaS);
+        const crossSectionMaterial = new THREE.MeshPhongMaterial({
+            color: 0x6495ED,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        const crossSection = new THREE.Mesh(crossSectionGeometry, crossSectionMaterial);
+        
+        // Rotate to be perpendicular to Ω direction
+        const perpAxis = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), omegaDirection);
+        crossSection.applyQuaternion(quaternion);
+        crossSection.position.set(-2, 0, 0);
+        scene.add(crossSection);
+
+        // Create edges for cross-section
+        const crossSectionEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(crossSectionGeometry),
+            new THREE.LineBasicMaterial({ color: 0x6495ED, linewidth: 2 })
+        );
+        crossSectionEdges.applyQuaternion(quaternion);
+        crossSectionEdges.position.copy(crossSection.position);
+        scene.add(crossSectionEdges);
+
+        // Label for incoming cross-section
+        const crossSectionLabel = createTextLabel('ΔS (in)', new THREE.Vector3(-2, deltaS/2 + 0.5, 0), '#6495ED', 40);
+        scene.add(crossSectionLabel);
+
+        // Create outgoing cross-sectional area ΔS at the end
+        const crossSectionOut = new THREE.Mesh(crossSectionGeometry, crossSectionMaterial);
+        crossSectionOut.applyQuaternion(quaternion);
+        crossSectionOut.position.set(1.5, 0, 0); // At the end of path
+        scene.add(crossSectionOut);
+
+        // Create edges for outgoing cross-section
+        const crossSectionOutEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(crossSectionGeometry),
+            new THREE.LineBasicMaterial({ color: 0x6495ED, linewidth: 2 })
+        );
+        crossSectionOutEdges.applyQuaternion(quaternion);
+        crossSectionOutEdges.position.copy(crossSectionOut.position);
+        scene.add(crossSectionOutEdges);
+
+        // Label for outgoing cross-section
+        const crossSectionOutLabel = createTextLabel('ΔS (out)', new THREE.Vector3(1.5, deltaS/2 + 0.5, 0), '#6495ED', 40);
+        scene.add(crossSectionOutLabel);
+
+        // Create path length Δξ (along Ω direction)
+        const deltaXi = 3.5;
+        const pathStartPos = crossSection.position.clone();
+        const pathEndPos = pathStartPos.clone().add(omegaDirection.clone().multiplyScalar(deltaXi));
+        
+        // Create distance marker outside the volume (horizontal line with vertical end markers)
+        const markerOffset = new THREE.Vector3(0, -1.2, 0); // Below the volume
+        const markerStart = pathStartPos.clone().add(markerOffset);
+        const markerEnd = pathEndPos.clone().add(markerOffset);
+        
+        // Main horizontal line
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints([markerStart, markerEnd]);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xFFD700, linewidth: 3 });
+        const markerLine = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(markerLine);
+        
+        // Vertical end markers (ticks)
+        const tickHeight = 0.2;
+        
+        // Start tick
+        const startTickTop = markerStart.clone().add(new THREE.Vector3(0, tickHeight, 0));
+        const startTickBottom = markerStart.clone().add(new THREE.Vector3(0, -tickHeight, 0));
+        const startTickGeometry = new THREE.BufferGeometry().setFromPoints([startTickTop, startTickBottom]);
+        const startTick = new THREE.Line(startTickGeometry, lineMaterial);
+        scene.add(startTick);
+        
+        // End tick
+        const endTickTop = markerEnd.clone().add(new THREE.Vector3(0, tickHeight, 0));
+        const endTickBottom = markerEnd.clone().add(new THREE.Vector3(0, -tickHeight, 0));
+        const endTickGeometry = new THREE.BufferGeometry().setFromPoints([endTickTop, endTickBottom]);
+        const endTick = new THREE.Line(endTickGeometry, lineMaterial);
+        scene.add(endTick);
+
+        // Label for path length (positioned at midpoint of marker)
+        const markerMidpoint = markerStart.clone().add(markerEnd).multiplyScalar(0.5);
+        const pathLabel = createTextLabel('Δξ', markerMidpoint.clone().add(new THREE.Vector3(0, -0.5, 0)), '#FFD700', 45);
+        scene.add(pathLabel);
+
+        // Create volume element (cylinder along Ω direction)
+        const volumeGeometry = new THREE.CylinderGeometry(deltaS/2, deltaS/2, deltaXi, 32, 1, true);
+        const volumeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x6495ED,
+            transparent: true,
+            opacity: 0.15,
+            side: THREE.DoubleSide
+        });
+        const volumeElement = new THREE.Mesh(volumeGeometry, volumeMaterial);
+        
+        // Rotate cylinder to align with Ω direction (cylinder default is along Y axis)
+        const cylQuaternion = new THREE.Quaternion();
+        cylQuaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), omegaDirection);
+        volumeElement.applyQuaternion(cylQuaternion);
+        
+        // Position at center of path
+        const volumeCenter = pathStartPos.clone().add(omegaDirection.clone().multiplyScalar(deltaXi/2));
+        volumeElement.position.copy(volumeCenter);
+        scene.add(volumeElement);
+
+        // Create host material spheres
+        const hostMaterialSpheres = [];
+        const hostSphereRadius = 0.06;
+        const numHostSpheres = 60;
+        
+        for (let i = 0; i < numHostSpheres; i++) {
+            const sphereGeometry = new THREE.SphereGeometry(hostSphereRadius, 12, 12);
+            const sphereMaterial = new THREE.MeshPhongMaterial({
+                color: 0xFFFFFF,
+                emissive: 0xCCCCCC,
+                emissiveIntensity: 0.2,
+                shininess: 30
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            
+            // Random position within cylindrical volume
+            const angle = Math.random() * 2 * Math.PI;
+            const radius = Math.random() * (deltaS/2 - hostSphereRadius);
+            const alongPath = Math.random() * deltaXi;
+            
+            const localPos = new THREE.Vector3(
+                radius * Math.cos(angle),
+                0,
+                radius * Math.sin(angle)
+            );
+            
+            // Rotate to align with Ω direction
+            localPos.applyQuaternion(cylQuaternion);
+            
+            // Position along the path
+            sphere.position.copy(pathStartPos.clone()
+                .add(omegaDirection.clone().multiplyScalar(alongPath))
+                .add(localPos));
+            
+            hostMaterialSpheres.push(sphere);
+            scene.add(sphere);
+        }
+
+        // Label for volume
+        const volumeLabel = createTextLabel('Δr = ΔS·Δξ', volumeCenter.clone().add(new THREE.Vector3(0, 1.2, 0)), '#6495ED', 40);
+        scene.add(volumeLabel);
+
+        // Point r label (as vector with arrow)
+        const pointRLabel = createTextLabel('r⃗', volumeCenter.clone().add(new THREE.Vector3(0.3, -0.8, 0)), '#FFFFFF', 40);
+        scene.add(pointRLabel);
+
+        // Create incoming photons (green - before absorption)
+        const incomingPhotons = [];
+        const incomingLabels = [];
+        const numIncoming = 12;
+        
+        for (let i = 0; i < numIncoming; i++) {
+            const angle = (i / numIncoming) * 2 * Math.PI;
+            const radius = (deltaS/2) * 0.7 * (0.5 + Math.random() * 0.5);
+            
+            const startOffset = new THREE.Vector3(
+                radius * Math.cos(angle),
+                0,
+                radius * Math.sin(angle)
+            );
+            startOffset.applyQuaternion(cylQuaternion);
+            
+            const startPos = pathStartPos.clone().add(startOffset);
+            const photon = createParticleWithSphere(startPos, omegaDirection, 1.0, 0x00FF00, 0.10);
+            incomingPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 0) {
+                const labelPos = startPos.clone().add(new THREE.Vector3(-0.8, 0.5, 0));
+                const label = createTextLabel('Incoming', labelPos, '#00FF00', 35);
+                incomingLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Create absorbed photons (red - stopped by host material)
+        const absorbedPhotons = [];
+        const absorbedLabels = [];
+        const numAbsorbed = 5;
+        
+        for (let i = 0; i < numAbsorbed; i++) {
+            // Pick random host sphere
+            const hostSphere = hostMaterialSpheres[Math.floor(Math.random() * hostMaterialSpheres.length)];
+            const hostPos = hostSphere.position.clone();
+            
+            // Small offset before the sphere
+            const offset = omegaDirection.clone().multiplyScalar(-0.15);
+            const startPos = hostPos.clone().add(offset);
+            
+            // Very short photon ending at host sphere, with tail showing where it came from
+            const photon = createParticleWithSphere(startPos, omegaDirection, 0.15, 0xFF4444, 0.08, true);
+            absorbedPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 0) {
+                const labelPos = hostPos.clone().add(new THREE.Vector3(0, 0.4, 0));
+                const label = createTextLabel('Absorbed', labelPos, '#FF4444', 35);
+                absorbedLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Create transmitted photons (green - after passing through)
+        const transmittedPhotons = [];
+        const transmittedLabels = [];
+        const numTransmitted = 7; // Less than incoming (some absorbed)
+        
+        for (let i = 0; i < numTransmitted; i++) {
+            const angle = (i / numTransmitted) * 2 * Math.PI;
+            const radius = (deltaS/2) * 0.7 * (0.5 + Math.random() * 0.5);
+            
+            const exitOffset = new THREE.Vector3(
+                radius * Math.cos(angle),
+                0,
+                radius * Math.sin(angle)
+            );
+            exitOffset.applyQuaternion(cylQuaternion);
+            
+            const exitPos = pathEndPos.clone().add(exitOffset);
+            const photon = createParticleWithSphere(exitPos, omegaDirection, 1.0, 0x00FF00, 0.10);
+            transmittedPhotons.push(photon);
+            scene.add(photon);
+            
+            if (i === 0) {
+                const labelPos = exitPos.clone().add(new THREE.Vector3(1.5, 0.5, 0));
+                const label = createTextLabel('Transmitted', labelPos, '#00FF00', 35);
+                transmittedLabels.push(label);
+                scene.add(label);
+            }
+        }
+
+        // Omega direction label
+        const omegaLabel = createTextLabel('Ω⃗', pathEndPos.clone().add(new THREE.Vector3(0.5, -0.6, 0)), '#FFD700', 50);
+        scene.add(omegaLabel);
+
+        // Collect all labels
+        const allLabels = [crossSectionLabel, crossSectionOutLabel, pathLabel, volumeLabel, pointRLabel, omegaLabel,
+                          ...incomingLabels, ...absorbedLabels, ...transmittedLabels];
+
+        // Animation state
+        let animationTime = 0;
+        const animationSpeed = 0.3;
+        const photonSpeed = 0.015;
+        let collisionCount = 0;
+        
+        // Create animated photons that will travel and potentially be absorbed
+        const animatedPhotons = [];
+        const flashEffects = [];
+        
+        function createAnimatedPhoton(startPos, isAbsorbed, hostSphere = null) {
+            const photonGroup = new THREE.Group();
+            
+            // Photon visual (sphere) - start as GREEN
+            const sphereGeometry = new THREE.SphereGeometry(0.10, 16, 16);
+            const sphereMaterial = new THREE.MeshPhongMaterial({
+                color: 0x00FF00,
+                emissive: 0x00FF00,
+                emissiveIntensity: 0.5
+            });
+            const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            photonGroup.add(sphere);
+            
+            // Trail line - also GREEN
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(60); // 20 points * 3 coordinates
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            const trailMaterial = new THREE.LineBasicMaterial({
+                color: 0x00FF00,
+                transparent: true,
+                opacity: 0.4
+            });
+            const trail = new THREE.Line(trailGeometry, trailMaterial);
+            photonGroup.add(trail);
+            
+            photonGroup.position.copy(startPos);
+            
+            return {
+                group: photonGroup,
+                startPos: startPos.clone(),
+                currentPos: startPos.clone(),
+                isAbsorbed: isAbsorbed,
+                hostSphere: hostSphere,
+                absorbed: false,
+                collisionLogged: false,
+                trailPositions: [],
+                active: true,
+                velocity: 1.0, // 1.0 = normal speed, 0 = stopped
+                stoppedAtCollision: false
+            };
+        }
+        
+        // Initialize animated photons
+        function initializeAnimatedPhotons() {
+            // Clear existing
+            animatedPhotons.forEach(p => scene.remove(p.group));
+            animatedPhotons.length = 0;
+            
+            const numPhotons = 20;
+            const numToAbsorb = 12; // Increase to ensure multiple collisions
+            
+            // All photons start at the incoming cross-section simultaneously
+            for (let i = 0; i < numPhotons; i++) {
+                const angle = (i / numPhotons) * 2 * Math.PI;
+                const radius = (deltaS/2) * 0.6;
+                
+                const startOffset = new THREE.Vector3(
+                    radius * Math.cos(angle),
+                    0,
+                    radius * Math.sin(angle)
+                );
+                startOffset.applyQuaternion(cylQuaternion);
+                
+                let startPos = pathStartPos.clone().add(startOffset);
+                
+                // Determine if this photon will be absorbed
+                const isAbsorbed = i < numToAbsorb;
+                let hostSphere = null;
+                
+                if (isAbsorbed) {
+                    // Select a random host sphere for collision
+                    hostSphere = hostMaterialSpheres[Math.floor(Math.random() * hostMaterialSpheres.length)];
+                    
+                    // Position photon so it will definitely collide with this sphere
+                    // Place it upstream (before) the host sphere along the Ω direction
+                    const distanceBeforeSphere = 0.3 + Math.random() * 0.5;
+                    
+                    // Get host sphere lateral position
+                    const hostAlongOmega = hostSphere.position.clone().sub(pathStartPos).dot(omegaDirection);
+                    const hostLateralPos = hostSphere.position.clone().sub(
+                        omegaDirection.clone().multiplyScalar(hostAlongOmega)
+                    ).sub(pathStartPos);
+                    
+                    // Start position aligned with host sphere but at the incoming surface
+                    startPos = pathStartPos.clone().add(hostLateralPos);
+                }
+                
+                const photon = createAnimatedPhoton(startPos, isAbsorbed, hostSphere);
+                animatedPhotons.push(photon);
+                scene.add(photon.group);
+            }
+        }
+        
+        // Create flash effect
+        function createFlash(position) {
+            // Create multiple flash elements for better visibility
+            const flashGroup = new THREE.Group();
+            
+            // Main bright flash sphere - SMALLER SIZE
+            const flashGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+            const flashMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFFFF00,
+                transparent: true,
+                opacity: 1.0
+            });
+            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+            flashGroup.add(flash);
+            
+            // Outer glow ring - SMALLER SIZE
+            const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFF4444,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.rotation.x = Math.PI / 2;
+            flashGroup.add(ring);
+            
+            // Point light for dramatic effect - REDUCED INTENSITY
+            const flashLight = new THREE.PointLight(0xFF4444, 1.0, 2);
+            flashGroup.add(flashLight);
+            
+            flashGroup.position.copy(position);
+            scene.add(flashGroup);
+            
+            flashEffects.push({
+                group: flashGroup,
+                flash: flash,
+                ring: ring,
+                light: flashLight,
+                time: 0,
+                maxTime: 0.6,
+                maxScale: 1.8
+            });
+        }
+        
+        // Update photon animation
+        function updatePhotonAnimation(deltaTime) {
+            animationTime += deltaTime * animationSpeed;
+            
+            animatedPhotons.forEach(photon => {
+                if (!photon.active) return;
+                
+                if (!photon.absorbed) {
+                    // Move photon forward only if velocity is non-zero
+                    if (photon.velocity > 0) {
+                        photon.currentPos.add(omegaDirection.clone().multiplyScalar(photonSpeed * photon.velocity));
+                        photon.group.position.copy(photon.currentPos);
+                        
+                        // Update trail
+                        photon.trailPositions.push(photon.currentPos.clone());
+                        if (photon.trailPositions.length > 20) {
+                            photon.trailPositions.shift();
+                        }
+                        
+                        // Update trail geometry
+                        const positions = photon.group.children[1].geometry.attributes.position.array;
+                        for (let i = 0; i < photon.trailPositions.length; i++) {
+                            positions[i * 3] = photon.trailPositions[i].x;
+                            positions[i * 3 + 1] = photon.trailPositions[i].y;
+                            positions[i * 3 + 2] = photon.trailPositions[i].z;
+                        }
+                        photon.group.children[1].geometry.attributes.position.needsUpdate = true;
+                    }
+                    
+                    // Check for collision if this photon should be absorbed
+                    if (photon.isAbsorbed && photon.hostSphere && !photon.collisionLogged) {
+                        const distToHost = photon.currentPos.distanceTo(photon.hostSphere.position);
+                        
+                        if (distToHost < 0.25) {
+                            // Collision! Create flash and mark as absorbed
+                            createFlash(photon.hostSphere.position.clone());
+                            photon.absorbed = true;
+                            photon.collisionLogged = true;
+                            collisionCount++;
+                            
+                            console.log(`Collision ${collisionCount}! Photon hit host sphere at distance ${distToHost.toFixed(3)}`);
+                            
+                            // Change color to red
+                            photon.group.children[0].material.color.setHex(0xFF4444);
+                            photon.group.children[0].material.emissive.setHex(0xFF4444);
+                            photon.group.children[1].material.color.setHex(0xFF4444);
+                            
+                            // Stop the photon movement but keep it visible
+                            photon.velocity = 0; // Stop moving
+                            
+                            // Mark to be cleaned up only when animation ends
+                            photon.stoppedAtCollision = true;
+                        }
+                    }
+                    
+                    // Check if photon has exited the volume (for transmitted photons)
+                    const distTraveled = photon.currentPos.distanceTo(photon.startPos);
+                    if (!photon.isAbsorbed && distTraveled > deltaXi + 1.5) {
+                        // Photon successfully transmitted (stays green)
+                        // Remove after short time
+                        setTimeout(() => {
+                            photon.active = false;
+                            scene.remove(photon.group);
+                        }, 1000);
+                    }
+                }
+            });
+            
+            // Update flash effects
+            for (let i = flashEffects.length - 1; i >= 0; i--) {
+                const flash = flashEffects[i];
+                flash.time += deltaTime;
+                const progress = flash.time / flash.maxTime;
+                
+                if (progress >= 1.0) {
+                    scene.remove(flash.group);
+                    flashEffects.splice(i, 1);
+                } else {
+                    // Expand and fade - using smaller maxScale
+                    const scale = 1.0 + (flash.maxScale - 1.0) * progress;
+                    flash.flash.scale.set(scale, scale, scale);
+                    flash.ring.scale.set(scale, scale, scale);
+                    
+                    // Fade out
+                    flash.flash.material.opacity = 1.0 - progress;
+                    flash.ring.material.opacity = 0.8 * (1.0 - progress);
+                    
+                    // Dim the light - using reduced intensity
+                    flash.light.intensity = 1.0 * (1.0 - progress);
+                }
+            }
+            
+            // Check if animation cycle is complete (all photons either stopped at collision or exited)
+            const allDone = animatedPhotons.every(p => 
+                !p.active || // Already removed
+                p.stoppedAtCollision || // Stopped at collision (still visible as red)
+                (p.currentPos.distanceTo(p.startPos) > deltaXi + 2.0) // Exited volume
+            );
+            
+            if (allDone && animatedPhotons.length > 0) {
+                console.log(`Animation cycle complete. Total collisions: ${collisionCount}`);
+                console.log(`Red photons remaining: ${animatedPhotons.filter(p => p.stoppedAtCollision).length}`);
+                
+                // Check if animation is still enabled
+                const animationEnabled = document.getElementById('restartAnimation').checked;
+                
+                if (animationEnabled) {
+                    // Clear current cycle and restart after a brief pause
+                    setTimeout(() => {
+                        // Clean up current photons
+                        animatedPhotons.forEach(p => scene.remove(p.group));
+                        animatedPhotons.length = 0;
+                        flashEffects.forEach(f => scene.remove(f.group));
+                        flashEffects.length = 0;
+                        collisionCount = 0;
+                        
+                        // Restart animation if still enabled
+                        if (document.getElementById('restartAnimation').checked) {
+                            initializeAnimatedPhotons();
+                        }
+                    }, 1500);
+                }
+            }
+        }
+        
+        // Control variables
+        let animationStarted = false;
+
+        // Event listeners
+        document.getElementById('showVolume').addEventListener('change', (e) => {
+            volumeElement.visible = e.target.checked;
+            crossSection.visible = e.target.checked;
+            crossSectionEdges.visible = e.target.checked;
+            crossSectionLabel.visible = e.target.checked;
+            crossSectionOut.visible = e.target.checked;
+            crossSectionOutEdges.visible = e.target.checked;
+            crossSectionOutLabel.visible = e.target.checked;
+            volumeLabel.visible = e.target.checked;
+            pointRLabel.visible = e.target.checked;
+        });
+
+        document.getElementById('showPath').addEventListener('change', (e) => {
+            markerLine.visible = e.target.checked;
+            startTick.visible = e.target.checked;
+            endTick.visible = e.target.checked;
+            pathLabel.visible = e.target.checked;
+            omegaLabel.visible = e.target.checked;
+        });
+
+        document.getElementById('showPhotons').addEventListener('change', (e) => {
+            incomingPhotons.forEach(p => p.visible = e.target.checked);
+            incomingLabels.forEach(l => l.visible = e.target.checked);
+            transmittedPhotons.forEach(p => p.visible = e.target.checked);
+            transmittedLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showAbsorbed').addEventListener('change', (e) => {
+            absorbedPhotons.forEach(p => p.visible = e.target.checked);
+            absorbedLabels.forEach(l => l.visible = e.target.checked);
+        });
+
+        document.getElementById('showHost').addEventListener('change', (e) => {
+            hostMaterialSpheres.forEach(s => s.visible = e.target.checked);
+        });
+
+        document.getElementById('showLabels').addEventListener('change', (e) => {
+            allLabels.forEach(label => label.visible = e.target.checked);
+        });
+
+        document.getElementById('restartAnimation').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                if (!animationStarted) {
+                    animationStarted = true;
+                }
+                initializeAnimatedPhotons();
+            } else {
+                // Clear animated photons when unchecked
+                animatedPhotons.forEach(p => scene.remove(p.group));
+                animatedPhotons.length = 0;
+                flashEffects.forEach(f => scene.remove(f.group));
+                flashEffects.length = 0;
+            }
+        });
+
+        document.getElementById('resetView').addEventListener('click', () => {
+            camera.position.set(8, 5, 8);
+            camera.lookAt(0, 0, 0);
+        });
+
+        // Mouse controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                const rotationSpeed = 0.005;
+                
+                // Rotate camera around the scene
+                const radius = camera.position.length();
+                const theta = Math.atan2(camera.position.x, camera.position.z);
+                const phi = Math.acos(camera.position.y / radius);
+                
+                const newTheta = theta + deltaX * rotationSpeed;
+                const newPhi = Math.max(0.1, Math.min(Math.PI - 0.1, phi + deltaY * rotationSpeed));
+                
+                camera.position.x = radius * Math.sin(newPhi) * Math.sin(newTheta);
+                camera.position.y = radius * Math.cos(newPhi);
+                camera.position.z = radius * Math.sin(newPhi) * Math.cos(newTheta);
+                camera.lookAt(0, 0, 0);
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        renderer.domElement.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const direction = camera.position.clone().normalize();
+            const distance = e.deltaY * zoomSpeed;
+            
+            camera.position.add(direction.multiplyScalar(distance));
+            
+            // Clamp camera distance
+            const dist = camera.position.length();
+            if (dist < 3) {
+                camera.position.normalize().multiplyScalar(3);
+            } else if (dist > 20) {
+                camera.position.normalize().multiplyScalar(20);
+            }
+        });
+
+        // Animation loop
+        let lastTime = Date.now();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const currentTime = Date.now();
+            const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+            lastTime = currentTime;
+            
+            // Removed automatic rotation to eliminate jiggling
+            
+            // Update photon animation
+            updatePhotonAnimation(deltaTime);
+            
+            // Make labels face camera
+            allLabels.forEach(label => {
+                label.lookAt(camera.position);
+            });
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

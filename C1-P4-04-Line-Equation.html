@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Cartesian Coordinate System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8fafc;
+            overflow: hidden;
+        }
+        
+        .header {
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        h1 {
+            font-size: 28px;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+        
+        .info {
+            font-size: 14px;
+            color: #374151;
+            line-height: 1.6;
+        }
+        
+        .info p {
+            margin-bottom: 4px;
+        }
+        
+        .info strong {
+            font-weight: 600;
+        }
+        
+        .info .note {
+            font-size: 12px;
+            font-style: italic;
+            margin-top: 8px;
+        }
+        
+        #canvas-container {
+            width: 100%;
+            height: calc(100vh - 220px);
+            cursor: grab;
+        }
+        
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>3D Cartesian Coordinate System</h1>
+        <div class="info">
+            <p><strong>Origin O:</strong> Black dot at (0, 0, 0)</p>
+            <p><strong>Axes:</strong> x (red, horizontal), y (green, horizontal), z (blue, vertical)</p>
+            <p><strong>Vector magnitude:</strong> dξ (purple arrow from (x₁, y₁, z₁) to (x₂, y₂, z₂))</p>
+            <p><strong>Projections:</strong> dx (red, x-axis), dy (green, y-axis), dz (blue, z-axis)</p>
+            <p><strong>Direction cosines:</strong> Ωₓ = dx/dξ, Ωᵧ = dy/dξ, Ωz = dz/dξ</p>
+            <p class="note">Drag to rotate the view</p>
+        </div>
+    </div>
+    
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, groupRotation;
+        let isDragging = false;
+        let lastPos = { x: 0, y: 0 };
+        let rotation = { x: 0.3, y: 0.4 };
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf8fafc);
+            
+            camera = new THREE.PerspectiveCamera(
+                50,
+                container.clientWidth / container.clientHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(5, 4, 6);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            const axisLength = 4;
+            
+            function createAxisCylinder(start, end, color) {
+                const direction = new THREE.Vector3().subVectors(end, start);
+                const length = direction.length();
+                const cylinder = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.05, 0.05, length, 16),
+                    new THREE.MeshPhongMaterial({ color: color })
+                );
+                cylinder.position.copy(start).add(direction.multiplyScalar(0.5));
+                cylinder.quaternion.setFromUnitVectors(
+                    new THREE.Vector3(0, 1, 0),
+                    direction.clone().normalize()
+                );
+                return cylinder;
+            }
+
+            const xAxis = createAxisCylinder(
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(axisLength, 0, 0),
+                0xff0000
+            );
+
+            const yAxis = createAxisCylinder(
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, axisLength),
+                0x00ff00
+            );
+
+            const zAxis = createAxisCylinder(
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, axisLength, 0),
+                0x0000ff
+            );
+
+            const originGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const originMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+            const origin = new THREE.Mesh(originGeometry, originMaterial);
+
+            const x1 = 1.0, y1 = 0.5, z1 = 0.8;
+            const x2 = 2.5, y2 = 2.0, z2 = 2.5;
+            
+            const vectorStart = new THREE.Vector3(x1, z1, y1);
+            const vectorEnd = new THREE.Vector3(x2, z2, y2);
+            
+            const startPointGeometry = new THREE.SphereGeometry(0.12, 16, 16);
+            const startPointMaterial = new THREE.MeshPhongMaterial({ color: 0xff6b00 });
+            const startPoint = new THREE.Mesh(startPointGeometry, startPointMaterial);
+            startPoint.position.copy(vectorStart);
+
+            const vectorDirection = new THREE.Vector3().subVectors(vectorEnd, vectorStart);
+            const arrowHelper = new THREE.ArrowHelper(
+                vectorDirection.clone().normalize(),
+                vectorStart,
+                vectorDirection.length(),
+                0x9333ea,
+                0.3,
+                0.2
+            );
+
+            const endPointGeometry = new THREE.SphereGeometry(0.12, 16, 16);
+            const endPointMaterial = new THREE.MeshPhongMaterial({ color: 0x9333ea });
+            const endPoint = new THREE.Mesh(endPointGeometry, endPointMaterial);
+            endPoint.position.copy(vectorEnd);
+
+            function createTextSprite(text, color, size = 0.8) {
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 512;
+                canvas.height = 128;
+                context.font = 'Bold 50px Arial';
+                context.fillStyle = color;
+                context.textAlign = 'center';
+                context.fillText(text, 256, 80);
+                
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMaterial);
+                sprite.scale.set(size * 2, size * 0.5, 1);
+                return sprite;
+            }
+
+            const xLabel = createTextSprite('x', '#ff0000');
+            xLabel.position.set(axisLength + 0.5, 0, 0);
+
+            const yLabel = createTextSprite('y', '#00ff00');
+            yLabel.position.set(0, 0, axisLength + 0.5);
+
+            const zLabel = createTextSprite('z', '#0000ff');
+            zLabel.position.set(0, axisLength + 0.5, 0);
+
+            const originLabel = createTextSprite('O', '#000000', 0.6);
+            originLabel.position.set(-0.3, -0.3, -0.3);
+
+            const startLabel = createTextSprite('(x₁,y₁,z₁)', '#ff6b00', 0.9);
+            startLabel.position.set(vectorStart.x + 0.5, vectorStart.y - 0.4, vectorStart.z);
+
+            const endLabel = createTextSprite('(x₂,y₂,z₂)', '#9333ea', 0.9);
+            endLabel.position.set(vectorEnd.x + 0.5, vectorEnd.y + 0.3, vectorEnd.z);
+
+            const vectorLabel = createTextSprite('dξ', '#9333ea', 0.9);
+            const midPoint = new THREE.Vector3().addVectors(vectorStart, vectorEnd).multiplyScalar(0.5);
+            vectorLabel.position.set(midPoint.x - 0.4, midPoint.y + 0.3, midPoint.z);
+
+            const dashedLineMaterial = new THREE.LineDashedMaterial({
+                color: 0x999999,
+                dashSize: 0.1,
+                gapSize: 0.05
+            });
+            
+            const startToXAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorStart,
+                new THREE.Vector3(vectorStart.x, 0, 0)
+            ]);
+            const startProjectionLine = new THREE.Line(startToXAxis, dashedLineMaterial);
+            startProjectionLine.computeLineDistances();
+            
+            const endToXAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorEnd,
+                new THREE.Vector3(vectorEnd.x, 0, 0)
+            ]);
+            const endProjectionLine = new THREE.Line(endToXAxis, dashedLineMaterial);
+            endProjectionLine.computeLineDistances();
+            
+            const xProjectionStart = new THREE.Vector3(x1, 0, 0);
+            const xProjectionEnd = new THREE.Vector3(x2, 0, 0);
+            const xProjectionDirection = new THREE.Vector3().subVectors(xProjectionEnd, xProjectionStart);
+            
+            const xProjectionArrow = new THREE.ArrowHelper(
+                xProjectionDirection.clone().normalize(),
+                xProjectionStart,
+                xProjectionDirection.length(),
+                0xff0000,
+                0.2,
+                0.15
+            );
+            
+            const dxLabel = createTextSprite('dx', '#ff0000', 0.8);
+            dxLabel.position.set((x1 + x2) / 2, -0.4, 0);
+            
+            const directionCosineLabel = createTextSprite('Ωₓ = dx/dξ', '#d97706', 1.5);
+            directionCosineLabel.position.set((x1 + x2) / 2 + 0.3, -1.2, 1.2);
+
+            const startToYAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorStart,
+                new THREE.Vector3(0, 0, vectorStart.z)
+            ]);
+            const startYProjectionLine = new THREE.Line(startToYAxis, dashedLineMaterial);
+            startYProjectionLine.computeLineDistances();
+            
+            const endToYAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorEnd,
+                new THREE.Vector3(0, 0, vectorEnd.z)
+            ]);
+            const endYProjectionLine = new THREE.Line(endToYAxis, dashedLineMaterial);
+            endYProjectionLine.computeLineDistances();
+            
+            const yProjectionStart = new THREE.Vector3(0, 0, y1);
+            const yProjectionEnd = new THREE.Vector3(0, 0, y2);
+            const yProjectionDirection = new THREE.Vector3().subVectors(yProjectionEnd, yProjectionStart);
+            
+            const yProjectionArrow = new THREE.ArrowHelper(
+                yProjectionDirection.clone().normalize(),
+                yProjectionStart,
+                yProjectionDirection.length(),
+                0x00ff00,
+                0.2,
+                0.15
+            );
+            
+            const dyLabel = createTextSprite('dy', '#00ff00', 0.8);
+            dyLabel.position.set(-0.5, 0, (y1 + y2) / 2);
+            
+            const directionCosineLabelY = createTextSprite('Ωᵧ = dy/dξ', '#d97706', 1.5);
+            directionCosineLabelY.position.set(-1.2, -1.2, (y1 + y2) / 2);
+
+            const startToZAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorStart,
+                new THREE.Vector3(0, vectorStart.y, 0)
+            ]);
+            const startZProjectionLine = new THREE.Line(startToZAxis, dashedLineMaterial);
+            startZProjectionLine.computeLineDistances();
+            
+            const endToZAxis = new THREE.BufferGeometry().setFromPoints([
+                vectorEnd,
+                new THREE.Vector3(0, vectorEnd.y, 0)
+            ]);
+            const endZProjectionLine = new THREE.Line(endToZAxis, dashedLineMaterial);
+            endZProjectionLine.computeLineDistances();
+            
+            const zProjectionStart = new THREE.Vector3(0, z1, 0);
+            const zProjectionEnd = new THREE.Vector3(0, z2, 0);
+            const zProjectionDirection = new THREE.Vector3().subVectors(zProjectionEnd, zProjectionStart);
+            
+            const zProjectionArrow = new THREE.ArrowHelper(
+                zProjectionDirection.clone().normalize(),
+                zProjectionStart,
+                zProjectionDirection.length(),
+                0x0000ff,
+                0.2,
+                0.15
+            );
+            
+            const dzLabel = createTextSprite('dz', '#0000ff', 0.8);
+            dzLabel.position.set(-0.5, (z1 + z2) / 2, 0);
+            
+            const directionCosineLabelZ = createTextSprite('Ωz = dz/dξ', '#d97706', 1.5);
+            directionCosineLabelZ.position.set(-1.2, (z1 + z2) / 2, -1.2);
+
+            groupRotation = new THREE.Group();
+            groupRotation.add(xAxis);
+            groupRotation.add(yAxis);
+            groupRotation.add(zAxis);
+            groupRotation.add(origin);
+            groupRotation.add(startPoint);
+            groupRotation.add(arrowHelper);
+            groupRotation.add(endPoint);
+            groupRotation.add(xLabel);
+            groupRotation.add(yLabel);
+            groupRotation.add(zLabel);
+            groupRotation.add(originLabel);
+            groupRotation.add(startLabel);
+            groupRotation.add(endLabel);
+            groupRotation.add(vectorLabel);
+            groupRotation.add(startProjectionLine);
+            groupRotation.add(endProjectionLine);
+            groupRotation.add(xProjectionArrow);
+            groupRotation.add(dxLabel);
+            groupRotation.add(directionCosineLabel);
+            groupRotation.add(startYProjectionLine);
+            groupRotation.add(endYProjectionLine);
+            groupRotation.add(yProjectionArrow);
+            groupRotation.add(dyLabel);
+            groupRotation.add(directionCosineLabelY);
+            groupRotation.add(startZProjectionLine);
+            groupRotation.add(endZProjectionLine);
+            groupRotation.add(zProjectionArrow);
+            groupRotation.add(dzLabel);
+            groupRotation.add(directionCosineLabelZ);
+            scene.add(groupRotation);
+
+            container.addEventListener('mousedown', handleMouseDown);
+            container.addEventListener('mousemove', handleMouseMove);
+            container.addEventListener('mouseup', handleMouseUp);
+            container.addEventListener('mouseleave', handleMouseUp);
+
+            window.addEventListener('resize', onWindowResize);
+            
+            animate();
+        }
+
+        function handleMouseDown(e) {
+            isDragging = true;
+            lastPos = { x: e.clientX, y: e.clientY };
+        }
+
+        function handleMouseMove(e) {
+            if (!isDragging) return;
+            const dx = e.clientX - lastPos.x;
+            const dy = e.clientY - lastPos.y;
+            rotation.x += dy * 0.01;
+            rotation.y += dx * 0.01;
+            lastPos = { x: e.clientX, y: e.clientY };
+        }
+
+        function handleMouseUp() {
+            isDragging = false;
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            groupRotation.rotation.x = rotation.x;
+            groupRotation.rotation.y = rotation.y;
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>

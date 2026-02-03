@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sea Surface Temperature Remote Sensing</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #000;
+        }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.85);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.85);
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 15px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        #colorBar {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 300px;
+            background: linear-gradient(to bottom, #ff0000, #ff4400, #ff8800, #ffcc00, #ffff00);
+            border: 2px solid white;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #colorLabels {
+            position: absolute;
+            top: 10px;
+            right: 60px;
+            width: 80px;
+            height: 300px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+        }
+        .tempLabel {
+            position: absolute;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        #scanStatus {
+            color: #4aff4a;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>Sea Surface Temperature Remote Sensing</strong><br>
+        Mouse: Rotate view | Scroll: Zoom<br>
+        <span id="captureCount">Photons captured: 0</span><br>
+        <span id="scanStatus">Scanning...</span><br>
+        Green photons = captured by sensor
+    </div>
+    <div id="controls">
+        <button id="toggleAnimation">Pause Animation</button>
+        <button id="toggleRotation">Stop Rotation</button>
+        <button id="restartScan">Restart Scan Cycle</button>
+        <button id="resetView">Reset View</button>
+    </div>
+    
+    <div id="colorBar"></div>
+    <div id="colorLabels">
+        <div class="tempLabel" style="top: 0px;">303 K</div>
+        <div class="tempLabel" style="top: 75px;">300 K</div>
+        <div class="tempLabel" style="top: 150px;">297 K</div>
+        <div class="tempLabel" style="top: 225px;">294 K</div>
+        <div class="tempLabel" style="top: 290px;">291 K</div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        var scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000a15);
+        
+        var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 40, 70);
+        camera.lookAt(0, 0, 0);
+        
+        var renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        var ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
+        scene.add(ambientLight);
+        
+        var directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        directionalLight.position.set(50, 100, 50);
+        scene.add(directionalLight);
+        
+        var oceanSize = 60;
+        var segments = 100;
+        var curvatureRadius = 200;
+        var oceanDepth = 40;
+        
+        var topGeometry = new THREE.PlaneGeometry(oceanSize, oceanSize, segments, segments);
+        var topPositions = topGeometry.attributes.position;
+        
+        for (var i = 0; i < topPositions.count; i++) {
+            var x = topPositions.array[i * 3];
+            var z = topPositions.array[i * 3 + 1];
+            var dist = Math.sqrt(x * x + z * z);
+            var bend = (dist * dist) / (2 * curvatureRadius);
+            topPositions.array[i * 3 + 2] = -bend;
+        }
+        
+        topGeometry.computeVertexNormals();
+        
+        var origTopPos = [];
+        for (var i = 0; i < topPositions.count; i++) {
+            origTopPos.push({
+                x: topPositions.array[i * 3],
+                y: topPositions.array[i * 3 + 1],
+                z: topPositions.array[i * 3 + 2]
+            });
+        }
+        
+        var topMaterial = new THREE.MeshPhongMaterial({
+            color: 0x0099ff,
+            side: THREE.DoubleSide,
+            shininess: 100,
+            specular: 0x88ccff
+        });
+        
+        var oceanTop = new THREE.Mesh(topGeometry, topMaterial);
+        oceanTop.rotation.x = -Math.PI / 2;
+        scene.add(oceanTop);
+        
+        var wireGeometry = new THREE.PlaneGeometry(oceanSize, oceanSize, 30, 30);
+        var wirePositions = wireGeometry.attributes.position;
+        
+        for (var i = 0; i < wirePositions.count; i++) {
+            var x = wirePositions.array[i * 3];
+            var z = wirePositions.array[i * 3 + 1];
+            var dist = Math.sqrt(x * x + z * z);
+            var bend = (dist * dist) / (2 * curvatureRadius);
+            wirePositions.array[i * 3 + 2] = -bend + 2.5;
+        }
+        
+        var wireMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.5,
+            depthTest: false
+        });
+        
+        var oceanWire = new THREE.Mesh(wireGeometry, wireMaterial);
+        oceanWire.rotation.x = -Math.PI / 2;
+        oceanWire.renderOrder = 1000;
+        scene.add(oceanWire);
+        
+        function createWaterWall(side) {
+            var wallSegments = 60;
+            var depthSegments = 30;
+            var wallGeometry = new THREE.BufferGeometry();
+            var wallPositions = [];
+            var wallColors = [];
+            var wallIndices = [];
+            
+            for (var j = 0; j <= depthSegments; j++) {
+                var depthRatio = j / depthSegments;
+                var yPos = -depthRatio * oceanDepth;
+                var r = 0.0 + (1.0 - depthRatio) * 0.0;
+                var g = 0.4 + (1.0 - depthRatio) * 0.2;
+                var b = 0.5 + (1.0 - depthRatio) * 0.5;
+                
+                for (var i = 0; i <= wallSegments; i++) {
+                    var t = i / wallSegments;
+                    var x, z;
+                    
+                    if (side === 'front') {
+                        x = (t - 0.5) * oceanSize;
+                        z = oceanSize / 2;
+                    } else if (side === 'back') {
+                        x = (t - 0.5) * oceanSize;
+                        z = -oceanSize / 2;
+                    } else if (side === 'left') {
+                        x = -oceanSize / 2;
+                        z = (t - 0.5) * oceanSize;
+                    } else {
+                        x = oceanSize / 2;
+                        z = (t - 0.5) * oceanSize;
+                    }
+                    
+                    var dist = Math.sqrt(x * x + z * z);
+                    var bend = (dist * dist) / (2 * curvatureRadius);
+                    var curvedY = yPos - bend;
+                    
+                    wallPositions.push(x, curvedY, z);
+                    wallColors.push(r, g, b);
+                }
+            }
+            
+            for (var j = 0; j < depthSegments; j++) {
+                for (var i = 0; i < wallSegments; i++) {
+                    var a = i + (wallSegments + 1) * j;
+                    var b = i + (wallSegments + 1) * (j + 1);
+                    var c = (i + 1) + (wallSegments + 1) * (j + 1);
+                    var d = (i + 1) + (wallSegments + 1) * j;
+                    wallIndices.push(a, b, d);
+                    wallIndices.push(b, c, d);
+                }
+            }
+            
+            wallGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
+            wallGeometry.setAttribute('color', new THREE.Float32BufferAttribute(wallColors, 3));
+            wallGeometry.setIndex(wallIndices);
+            wallGeometry.computeVertexNormals();
+            
+            var wallMaterial = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            return new THREE.Mesh(wallGeometry, wallMaterial);
+        }
+        
+        scene.add(createWaterWall('front'));
+        scene.add(createWaterWall('back'));
+        scene.add(createWaterWall('left'));
+        scene.add(createWaterWall('right'));
+        
+        var bottomGeometry = new THREE.PlaneGeometry(oceanSize, oceanSize, segments, segments);
+        var bottomPositions = bottomGeometry.attributes.position;
+        
+        for (var i = 0; i < bottomPositions.count; i++) {
+            var x = bottomPositions.array[i * 3];
+            var z = bottomPositions.array[i * 3 + 1];
+            var dist = Math.sqrt(x * x + z * z);
+            var bend = (dist * dist) / (2 * curvatureRadius);
+            bottomPositions.array[i * 3 + 2] = -bend - oceanDepth;
+        }
+        
+        bottomGeometry.computeVertexNormals();
+        
+        var bottomMaterial = new THREE.MeshPhongMaterial({
+            color: 0x001122,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9
+        });
+        
+        var oceanBottom = new THREE.Mesh(bottomGeometry, bottomMaterial);
+        oceanBottom.rotation.x = -Math.PI / 2;
+        scene.add(oceanBottom);
+        
+        var satelliteGroup = new THREE.Group();
+        
+        var bodyGeo = new THREE.BoxGeometry(1.5, 0.8, 2);
+        var bodyMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+        var body = new THREE.Mesh(bodyGeo, bodyMat);
+        satelliteGroup.add(body);
+        
+        var panelGeo = new THREE.BoxGeometry(3.5, 0.08, 1.2);
+        var panelMat = new THREE.MeshPhongMaterial({ color: 0x0055cc });
+        
+        var leftPanel = new THREE.Mesh(panelGeo, panelMat);
+        leftPanel.position.x = -2;
+        satelliteGroup.add(leftPanel);
+        
+        var rightPanel = new THREE.Mesh(panelGeo, panelMat);
+        rightPanel.position.x = 2;
+        satelliteGroup.add(rightPanel);
+        
+        var sensorGeo = new THREE.CylinderGeometry(0.3, 0.4, 0.7, 12);
+        var sensorMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        var sensor = new THREE.Mesh(sensorGeo, sensorMat);
+        sensor.position.y = -0.7;
+        satelliteGroup.add(sensor);
+        
+        var sensorHeight = 20;
+        satelliteGroup.position.set(-30, sensorHeight, -30);
+        scene.add(satelliteGroup);
+        
+        var coneRadius = 2.5;
+        var coneGeo = new THREE.ConeGeometry(coneRadius, sensorHeight, 32);
+        var coneMat = new THREE.MeshBasicMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide
+        });
+        var cone = new THREE.Mesh(coneGeo, coneMat);
+        cone.position.set(-30, sensorHeight / 2, -30);
+        cone.rotation.x = Math.PI;
+        scene.add(cone);
+        
+        var allScanMarks = [];
+        var allSSTMaps = [];
+        var scanComplete = false;
+        
+        var scanStartX = -30;
+        var scanEndX = 30;
+        var scanSpeed = 0.13;
+        var satX = scanStartX;
+        var scanDir = 1;
+        
+        var scanStartZ = -30;
+        var scanEndZ = 30;
+        
+        var scanSpacing = coneRadius * 2;
+        var satZ = scanStartZ;
+        
+        var currentPass = [];
+        
+        function createScanMark(x, z) {
+            var markGeo = new THREE.CircleGeometry(coneRadius * 0.5, 24);
+            var markMat = new THREE.MeshBasicMaterial({
+                color: 0xff6600,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide,
+                depthTest: false
+            });
+            var mark = new THREE.Mesh(markGeo, markMat);
+            mark.rotation.x = -Math.PI / 2;
+            mark.position.set(x, 1.8, z);
+            mark.renderOrder = 999;
+            scene.add(mark);
+            return mark;
+        }
+        
+        function createSSTMap(passZ) {
+            var mapGeo = new THREE.PlaneGeometry(60, scanSpacing, 60, 1);
+            var mapPos = mapGeo.attributes.position;
+            var colors = [];
+            
+            for (var i = 0; i < mapPos.count; i++) {
+                var x = mapPos.array[i * 3];
+                
+                var dist = Math.sqrt(x * x + passZ * passZ);
+                var bend = (dist * dist) / (2 * curvatureRadius);
+                mapPos.array[i * 3 + 2] = -bend;
+                
+                var tempNoise = Math.sin(x * 0.3) * Math.cos(passZ * 0.2) * 6;
+                var temperature = 297 + tempNoise;
+                var tempNormalized = (temperature - 291) / 12;
+                
+                var r, g, b;
+                if (tempNormalized < 0.25) {
+                    r = 1.0;
+                    g = tempNormalized * 4 * 0.8;
+                    b = 0.0;
+                } else if (tempNormalized < 0.5) {
+                    r = 1.0;
+                    g = 0.2 + (tempNormalized - 0.25) * 4 * 0.3;
+                    b = 0.0;
+                } else if (tempNormalized < 0.75) {
+                    r = 1.0;
+                    g = 0.5 + (tempNormalized - 0.5) * 4 * 0.3;
+                    b = 0.0;
+                } else {
+                    r = 1.0;
+                    g = 0.8 + (tempNormalized - 0.75) * 4 * 0.2;
+                    b = 0.0;
+                }
+                
+                colors.push(r, g, b);
+            }
+            
+            mapGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            
+            var mapMat = new THREE.MeshBasicMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.7,
+                depthTest: false
+            });
+            
+            var sstMap = new THREE.Mesh(mapGeo, mapMat);
+            sstMap.rotation.x = -Math.PI / 2;
+            sstMap.position.set(0, 1.5, passZ);
+            sstMap.renderOrder = 998;
+            scene.add(sstMap);
+            
+            return sstMap;
+        }
+        
+        function clearAllScans() {
+            for (var i = 0; i < allScanMarks.length; i++) {
+                scene.remove(allScanMarks[i]);
+                allScanMarks[i].geometry.dispose();
+                allScanMarks[i].material.dispose();
+            }
+            allScanMarks = [];
+            
+            for (var i = 0; i < allSSTMaps.length; i++) {
+                scene.remove(allSSTMaps[i]);
+                allSSTMaps[i].geometry.dispose();
+                allSSTMaps[i].material.dispose();
+            }
+            allSSTMaps = [];
+            
+            for (var i = 0; i < currentPass.length; i++) {
+                scene.remove(currentPass[i]);
+                currentPass[i].geometry.dispose();
+                currentPass[i].material.dispose();
+            }
+            currentPass = [];
+        }
+        
+        function removeScanTracks() {
+            for (var i = 0; i < allScanMarks.length; i++) {
+                scene.remove(allScanMarks[i]);
+                allScanMarks[i].geometry.dispose();
+                allScanMarks[i].material.dispose();
+            }
+            allScanMarks = [];
+            
+            for (var i = 0; i < currentPass.length; i++) {
+                scene.remove(currentPass[i]);
+                currentPass[i].geometry.dispose();
+                currentPass[i].material.dispose();
+            }
+            currentPass = [];
+        }
+        
+        function restartScan() {
+            clearAllScans();
+            
+            satX = scanStartX;
+            satZ = scanStartZ;
+            scanDir = 1;
+            scanComplete = false;
+            
+            satelliteGroup.position.set(satX, sensorHeight, satZ);
+            cone.position.set(satX, sensorHeight / 2, satZ);
+            
+            document.getElementById('scanStatus').textContent = 'Scanning...';
+            document.getElementById('scanStatus').style.color = '#4aff4a';
+        }
+        
+        var photons = [];
+        var maxPhotons = 700;
+        var capturedCount = 0;
+        
+        function getWaveHeight(x, z, time) {
+            var w1 = Math.sin(x * 0.15 + time * 1.0) * 1.0;
+            var w2 = Math.cos(z * 0.2 + time * 0.8) * 0.8;
+            var w3 = Math.sin((x + z) * 0.12 + time * 1.2) * 0.7;
+            var w4 = Math.cos((x - z) * 0.18 + time * 0.6) * 0.5;
+            return w1 + w2 + w3 + w4;
+        }
+        
+        function addPhoton() {
+            var temp = Math.random();
+            var color = temp < 0.3 ? 0xff0000 : (temp < 0.7 ? 0xff4400 : 0xff8844);
+            
+            var pGeo = new THREE.SphereGeometry(0.32, 8, 8);
+            var pMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 1
+            });
+            var p = new THREE.Mesh(pGeo, pMat);
+            
+            var spawnNearSat = Math.random() < 0.5;
+            var px, pz;
+            
+            if (spawnNearSat) {
+                var angle = Math.random() * Math.PI * 2;
+                var radius = Math.random() * coneRadius * 1.8;
+                px = satelliteGroup.position.x + Math.cos(angle) * radius;
+                pz = satelliteGroup.position.z + Math.sin(angle) * radius;
+            } else {
+                px = (Math.random() - 0.5) * 50;
+                pz = (Math.random() - 0.5) * 50;
+            }
+            
+            var time = Date.now() * 0.001;
+            var py = getWaveHeight(px, pz, time);
+            
+            p.position.set(px, py, pz);
+            
+            var theta = Math.random() * Math.PI * 2;
+            var phi = Math.random() * Math.PI * 0.6;
+            
+            var vx = Math.sin(phi) * Math.cos(theta) * 0.13;
+            var vy = Math.abs(Math.cos(phi)) * 0.13 + 0.05;
+            var vz = Math.sin(phi) * Math.sin(theta) * 0.13;
+            
+            scene.add(p);
+            
+            var dx = px - satelliteGroup.position.x;
+            var dz = pz - satelliteGroup.position.z;
+            var dist = Math.sqrt(dx * dx + dz * dz);
+            var inFOV = dist < coneRadius * 1.0;
+            
+            photons.push({
+                mesh: p,
+                vx: vx,
+                vy: vy,
+                vz: vz,
+                life: 0,
+                captured: false,
+                targetX: 0,
+                targetY: 0,
+                targetZ: 0,
+                inFOV: inFOV
+            });
+        }
+        
+        var gridHelper = new THREE.GridHelper(80, 40, 0xff0000, 0x333333);
+        gridHelper.position.y = 0;
+        scene.add(gridHelper);
+        
+        var animating = true;
+        var rotating = true;
+        var rotAngle = 0;
+        
+        var isDragging = false;
+        var previousMousePosition = { x: 0, y: 0 };
+        var rotation = { x: 0.5, y: 0.785 };
+        var distance = 80;
+        
+        renderer.domElement.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+        
+        renderer.domElement.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                var deltaX = e.clientX - previousMousePosition.x;
+                var deltaY = e.clientY - previousMousePosition.y;
+                rotation.y += deltaX * 0.005;
+                rotation.x += deltaY * 0.005;
+                rotation.x = Math.max(0.1, Math.min(Math.PI/2 - 0.1, rotation.x));
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+        
+        renderer.domElement.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+        
+        renderer.domElement.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            distance += e.deltaY * 0.1;
+            distance = Math.max(30, Math.min(200, distance));
+        });
+        
+        function updateCamera() {
+            var x = distance * Math.sin(rotation.y) * Math.cos(rotation.x);
+            var y = distance * Math.sin(rotation.x);
+            var z = distance * Math.cos(rotation.y) * Math.cos(rotation.x);
+            camera.position.set(x, y, z);
+            camera.lookAt(0, -10, 0);
+        }
+        
+        document.getElementById('toggleAnimation').addEventListener('click', function(e) {
+            animating = !animating;
+            e.target.textContent = animating ? 'Pause' : 'Resume';
+        });
+        
+        document.getElementById('toggleRotation').addEventListener('click', function(e) {
+            rotating = !rotating;
+            e.target.textContent = rotating ? 'Stop Rotation' : 'Start Rotation';
+        });
+        
+        document.getElementById('restartScan').addEventListener('click', function() {
+            restartScan();
+        });
+        
+        document.getElementById('resetView').addEventListener('click', function() {
+            distance = 80;
+            rotation = { x: 0.5, y: 0.785 };
+            rotAngle = 0;
+            scene.rotation.y = 0;
+        });
+        
+        var frame = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (animating) {
+                frame++;
+                var time = Date.now() * 0.001;
+                
+                for (var i = 0; i < topPositions.count; i++) {
+                    var x = origTopPos[i].x;
+                    var y = origTopPos[i].y;
+                    var baseZ = origTopPos[i].z;
+                    var wave = getWaveHeight(x, y, time);
+                    topPositions.array[i * 3 + 2] = baseZ + wave;
+                }
+                topPositions.needsUpdate = true;
+                topGeometry.computeVertexNormals();
+                
+                if (!scanComplete) {
+                    satX += scanSpeed * scanDir;
+                    
+                    if (satX >= scanEndX && scanDir === 1) {
+                        satX = scanEndX;
+                        scanDir = -1;
+                        
+                        allScanMarks = allScanMarks.concat(currentPass);
+                        allSSTMaps.push(createSSTMap(satZ));
+                        currentPass = [];
+                        
+                        satZ += scanSpacing;
+                        
+                        if (satZ > scanEndZ) {
+                            scanComplete = true;
+                            document.getElementById('scanStatus').textContent = 'Scan Complete!';
+                            document.getElementById('scanStatus').style.color = '#ffff00';
+                            // Remove all scan tracks when complete
+                            removeScanTracks();
+                        }
+                    } else if (satX <= scanStartX && scanDir === -1) {
+                        satX = scanStartX;
+                        scanDir = 1;
+                        
+                        allScanMarks = allScanMarks.concat(currentPass);
+                        allSSTMaps.push(createSSTMap(satZ));
+                        currentPass = [];
+                        
+                        satZ += scanSpacing;
+                        
+                        if (satZ > scanEndZ) {
+                            scanComplete = true;
+                            document.getElementById('scanStatus').textContent = 'Scan Complete!';
+                            document.getElementById('scanStatus').style.color = '#ffff00';
+                            // Remove all scan tracks when complete
+                            removeScanTracks();
+                        }
+                    }
+                    
+                    satelliteGroup.position.set(satX, sensorHeight, satZ);
+                    cone.position.set(satX, sensorHeight / 2, satZ);
+                    
+                    if (frame % 5 === 0) {
+                        currentPass.push(createScanMark(satX, satZ));
+                    }
+                }
+                
+                if (photons.length < maxPhotons) {
+                    addPhoton();
+                    addPhoton();
+                }
+                
+                for (var i = photons.length - 1; i >= 0; i--) {
+                    var ph = photons[i];
+                    
+                    // Check distance BEFORE moving
+                    if (ph.captured) {
+                        var distToTarget = Math.sqrt(
+                            Math.pow(ph.mesh.position.x - ph.targetX, 2) +
+                            Math.pow(ph.mesh.position.y - ph.targetY, 2) +
+                            Math.pow(ph.mesh.position.z - ph.targetZ, 2)
+                        );
+                        
+                        // Stop and remove when reached sensor
+                        if (distToTarget < 0.8) {
+                            scene.remove(ph.mesh);
+                            ph.mesh.geometry.dispose();
+                            ph.mesh.material.dispose();
+                            photons.splice(i, 1);
+                            continue;
+                        }
+                    }
+                    
+                    // Move photon
+                    ph.mesh.position.x += ph.vx;
+                    ph.mesh.position.y += ph.vy;
+                    ph.mesh.position.z += ph.vz;
+                    ph.life++;
+                    
+                    // Capture check
+                    if (!ph.captured && ph.inFOV && ph.mesh.position.y > 5) {
+                        ph.captured = true;
+                        ph.mesh.material.color.setHex(0x00ff00);
+                        ph.mesh.scale.set(1.4, 1.4, 1.4);
+                        capturedCount++;
+                        document.getElementById('captureCount').textContent = 'Photons captured: ' + capturedCount;
+                        
+                        // Set target position
+                        ph.targetX = satelliteGroup.position.x;
+                        ph.targetY = satelliteGroup.position.y - 0.7;
+                        ph.targetZ = satelliteGroup.position.z;
+                        
+                        // Calculate direction to sensor
+                        var dx = ph.targetX - ph.mesh.position.x;
+                        var dy = ph.targetY - ph.mesh.position.y;
+                        var dz = ph.targetZ - ph.mesh.position.z;
+                        var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        
+                        ph.vx = (dx / d) * 0.5;
+                        ph.vy = (dy / d) * 0.5;
+                        ph.vz = (dz / d) * 0.5;
+                    }
+                    
+                    // Fade uncaptured photons
+                    if (!ph.captured && ph.life > 100) {
+                        ph.mesh.material.opacity = 1 - (ph.life - 100) / 40;
+                    }
+                    
+                    // Remove old uncaptured photons
+                    if (!ph.captured && ph.life > 140) {
+                        scene.remove(ph.mesh);
+                        ph.mesh.geometry.dispose();
+                        ph.mesh.material.dispose();
+                        photons.splice(i, 1);
+                    }
+                }
+                
+                if (rotating) {
+                    rotAngle += 0.0015;
+                    scene.rotation.y = rotAngle;
+                }
+            }
+            
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

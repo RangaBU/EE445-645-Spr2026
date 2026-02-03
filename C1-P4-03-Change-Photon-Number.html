@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Absorption in Volume Element</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        button {
+            padding: 12px 24px;
+            background: #0f3460;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #1a5490;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 350px;
+            font-size: 14px;
+        }
+        .math {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <button id="animateBtn">Start Animation</button>
+    </div>
+    
+    <div id="info">
+        <strong>Volume Element: Δ<span class="math">r⃗</span> = ΔS·Δξ</strong><br>
+        • White spheres: Host material<br>
+        • Green spheres: Photons<br>
+        • Top/Bottom faces: ΔS<br>
+        • Δξ: Height of the cube<br>
+        • Animation alternates between:<br>
+        &nbsp;&nbsp;- High absorption (fewer exit)<br>
+        &nbsp;&nbsp;- Low absorption (more exit)<br>
+        • Drag to rotate view
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        let scene, camera, renderer, cube, controls;
+        let photons = [], hostMaterial = [];
+        let photonsAtTop = [], photonsAtBottom = [];
+        
+        const incidentCount = 20;
+        let absorptionRate = 0.6; // Start with high absorption (fewer photons exit)
+        let useHighAbsorption = true; // Toggle between high and low absorption
+        const densityCount = 150;
+        
+        // Animation state
+        let animationState = 'idle';
+        let animationProgress = 0;
+        let isAnimating = false;
+        let transmittedPhotonIndices = [];
+        
+        const CUBE_SIZE = 4;
+        const PHOTON_RADIUS = 0.12;
+        const TOP_SURFACE = CUBE_SIZE / 2;
+        const BOTTOM_SURFACE = -CUBE_SIZE / 2;
+        
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 6, 8);
+            camera.lookAt(0, 0, 0);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Add OrbitControls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 5;
+            controls.maxDistance = 20;
+            controls.maxPolarAngle = Math.PI;
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight1.position.set(5, 10, 5);
+            scene.add(directionalLight1);
+            
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+            directionalLight2.position.set(-5, -5, -5);
+            scene.add(directionalLight2);
+            
+            createCube();
+            createHostMaterial();
+            resetPhotons();
+            addLabels();
+            addDirectionArrow();
+            addHeightIndicator();
+            setupControls();
+            animate();
+            
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function createCube() {
+            const edgesGeometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE));
+            const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x4080ff, linewidth: 2 });
+            cube = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+            scene.add(cube);
+            
+            const faceGeometry = new THREE.PlaneGeometry(CUBE_SIZE, CUBE_SIZE);
+            const faceMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x4080ff, 
+                transparent: true, 
+                opacity: 0.15,
+                side: THREE.DoubleSide
+            });
+            
+            const topFace = new THREE.Mesh(faceGeometry, faceMaterial);
+            topFace.rotation.x = Math.PI / 2;
+            topFace.position.y = TOP_SURFACE;
+            scene.add(topFace);
+            
+            const bottomFace = new THREE.Mesh(faceGeometry, faceMaterial);
+            bottomFace.rotation.x = Math.PI / 2;
+            bottomFace.position.y = BOTTOM_SURFACE;
+            scene.add(bottomFace);
+        }
+        
+        function createHostMaterial() {
+            hostMaterial.forEach(particle => scene.remove(particle));
+            hostMaterial = [];
+            
+            const particleGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+            const particleMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xffffff,
+                shininess: 30
+            });
+            
+            for (let i = 0; i < densityCount; i++) {
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                particle.position.set(
+                    (Math.random() - 0.5) * 3.6,
+                    (Math.random() - 0.5) * 3.6,
+                    (Math.random() - 0.5) * 3.6
+                );
+                hostMaterial.push(particle);
+                scene.add(particle);
+            }
+        }
+        
+        function resetPhotons() {
+            photons.forEach(photon => scene.remove(photon.mesh));
+            photons = [];
+            
+            const photonGeometry = new THREE.SphereGeometry(PHOTON_RADIUS, 16, 16);
+            const photonMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00ff00,
+                emissive: 0x00ff00,
+                emissiveIntensity: 0.5,
+                shininess: 100
+            });
+            
+            for (let i = 0; i < incidentCount; i++) {
+                const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+                const angle = (i / incidentCount) * Math.PI * 2;
+                const radius = 0.8 + Math.random() * 0.8;
+                const startY = TOP_SURFACE + 2.5 + Math.random() * 0.5;
+                
+                photon.position.set(
+                    Math.cos(angle) * radius,
+                    startY,
+                    Math.sin(angle) * radius
+                );
+                
+                photons.push({ 
+                    mesh: photon, 
+                    startX: photon.position.x,
+                    startZ: photon.position.z,
+                    startY: startY,
+                    absorbed: false
+                });
+                scene.add(photon);
+            }
+            
+            transmittedPhotonIndices = [];
+            const transmittedCount = Math.round(incidentCount * (1 - absorptionRate));
+            const indices = Array.from({length: incidentCount}, (_, i) => i);
+            for (let i = 0; i < transmittedCount; i++) {
+                const randomIndex = Math.floor(Math.random() * indices.length);
+                transmittedPhotonIndices.push(indices[randomIndex]);
+                indices.splice(randomIndex, 1);
+            }
+            
+            animationState = 'idle';
+            animationProgress = 0;
+            isAnimating = false;
+        }
+        
+        function addLabels() {
+            // ΔS labels for top and bottom
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            context.fillStyle = '#ffffff';
+            context.font = 'Bold 32px Arial';
+            context.textAlign = 'center';
+            context.fillText('ΔS', 128, 40);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            
+            const topLabel = new THREE.Sprite(spriteMaterial);
+            topLabel.position.set(0, 2.8, 0);
+            topLabel.scale.set(1.5, 0.4, 1);
+            scene.add(topLabel);
+            
+            const bottomLabel = new THREE.Sprite(spriteMaterial);
+            bottomLabel.position.set(0, -2.8, 0);
+            bottomLabel.scale.set(1.5, 0.4, 1);
+            scene.add(bottomLabel);
+        }
+        
+        function addDirectionArrow() {
+            // Direction arrow above the cube
+            const arrowHelper = new THREE.ArrowHelper(
+                new THREE.Vector3(0, -1, 0),
+                new THREE.Vector3(0, 4.5, 0),
+                1.5,
+                0xffff00,
+                0.3,
+                0.2
+            );
+            scene.add(arrowHelper);
+            
+            // Ω⃗ label above arrow
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            context.fillStyle = '#ffff00';
+            context.font = 'Bold 36px Arial';
+            context.textAlign = 'center';
+            context.fillText('Ω⃗', 128, 42);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const omegaLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+            omegaLabel.position.set(0, 5, 0);
+            omegaLabel.scale.set(1, 0.25, 1);
+            scene.add(omegaLabel);
+        }
+        
+        function addHeightIndicator() {
+            // Create vertical line showing height
+            const points = [];
+            points.push(new THREE.Vector3(-2.5, BOTTOM_SURFACE, 0));
+            points.push(new THREE.Vector3(-2.5, TOP_SURFACE, 0));
+            
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4080ff, linewidth: 2 });
+            const heightLine = new THREE.Line(lineGeometry, lineMaterial);
+            scene.add(heightLine);
+            
+            // Add small caps at both ends
+            const capGeometry = new THREE.PlaneGeometry(0.3, 0.05);
+            const capMaterial = new THREE.MeshBasicMaterial({ color: 0x4080ff, side: THREE.DoubleSide });
+            
+            const topCap = new THREE.Mesh(capGeometry, capMaterial);
+            topCap.position.set(-2.5, TOP_SURFACE, 0);
+            topCap.rotation.z = Math.PI / 2;
+            scene.add(topCap);
+            
+            const bottomCap = new THREE.Mesh(capGeometry, capMaterial);
+            bottomCap.position.set(-2.5, BOTTOM_SURFACE, 0);
+            bottomCap.rotation.z = Math.PI / 2;
+            scene.add(bottomCap);
+            
+            // Add Δξ label next to the line
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            context.fillStyle = '#4080ff';
+            context.font = 'Bold 32px Arial';
+            context.textAlign = 'center';
+            context.fillText('Δξ', 128, 40);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const heightLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+            heightLabel.position.set(-3.2, 0, 0);
+            heightLabel.scale.set(1.2, 0.3, 1);
+            scene.add(heightLabel);
+        }
+        
+        function setupControls() {
+            const btn = document.getElementById('animateBtn');
+            
+            btn.addEventListener('click', () => {
+                if (!isAnimating) {
+                    startAnimation();
+                }
+            });
+        }
+        
+        function startAnimation() {
+            // Clear previous frozen photons
+            photonsAtTop.forEach(p => scene.remove(p));
+            photonsAtBottom.forEach(p => scene.remove(p));
+            photonsAtTop = [];
+            photonsAtBottom = [];
+            
+            // Alternate between high and low absorption
+            if (useHighAbsorption) {
+                absorptionRate = 0.65; // High absorption: fewer photons exit (~7 out of 20)
+            } else {
+                absorptionRate = 0.25; // Low absorption: more photons exit (~15 out of 20)
+            }
+            useHighAbsorption = !useHighAbsorption; // Toggle for next cycle
+            
+            // Reset to starting position
+            resetPhotons();
+            
+            isAnimating = true;
+            animationState = 'approaching';
+            document.getElementById('animateBtn').textContent = 'Animation Running...';
+            document.getElementById('animateBtn').disabled = true;
+        }
+        
+        function createFrozenPhotons(position, count) {
+            const frozenPhotons = [];
+            const photonGeometry = new THREE.SphereGeometry(PHOTON_RADIUS, 16, 16);
+            const photonMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00ff00,
+                emissive: 0x00ff00,
+                emissiveIntensity: 0.5,
+                shininess: 100
+            });
+            
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2;
+                const radius = 0.8 + (i % 3) * 0.3;
+                const photon = new THREE.Mesh(photonGeometry, photonMaterial);
+                photon.position.set(
+                    Math.cos(angle) * radius,
+                    position,
+                    Math.sin(angle) * radius
+                );
+                frozenPhotons.push(photon);
+                scene.add(photon);
+            }
+            return frozenPhotons;
+        }
+        
+        function updateAnimation() {
+            if (!isAnimating) return;
+            
+            const speed = 0.015;
+            
+            switch(animationState) {
+                case 'approaching':
+                    animationProgress += speed;
+                    photons.forEach((photon) => {
+                        const targetY = TOP_SURFACE;
+                        const currentY = photon.startY - (photon.startY - targetY) * animationProgress;
+                        photon.mesh.position.y = currentY;
+                    });
+                    
+                    if (animationProgress >= 1.0) {
+                        animationState = 'at_top';
+                        animationProgress = 0;
+                        photons.forEach(photon => {
+                            photon.mesh.position.y = TOP_SURFACE;
+                        });
+                        
+                        // Create frozen copies at top surface
+                        photonsAtTop = createFrozenPhotons(TOP_SURFACE, incidentCount);
+                        
+                        setTimeout(() => {
+                            if (isAnimating && animationState === 'at_top') {
+                                animationState = 'through_cube';
+                            }
+                        }, 1500);
+                    }
+                    break;
+                    
+                case 'through_cube':
+                    animationProgress += speed * 0.7;
+                    photons.forEach((photon, i) => {
+                        if (!transmittedPhotonIndices.includes(i)) {
+                            const fadePoint = 0.3 + (i / incidentCount) * 0.3;
+                            if (animationProgress > fadePoint && !photon.absorbed) {
+                                photon.mesh.material.opacity = Math.max(0, 1 - (animationProgress - fadePoint) * 5);
+                                photon.mesh.material.transparent = true;
+                                photon.absorbed = true;
+                            } else if (!photon.absorbed) {
+                                const targetY = BOTTOM_SURFACE;
+                                photon.mesh.position.y = TOP_SURFACE - (TOP_SURFACE - targetY) * animationProgress;
+                            }
+                        } else {
+                            const targetY = BOTTOM_SURFACE;
+                            photon.mesh.position.y = TOP_SURFACE - (TOP_SURFACE - targetY) * animationProgress;
+                        }
+                    });
+                    
+                    if (animationProgress >= 1.0) {
+                        animationState = 'at_bottom';
+                        animationProgress = 0;
+                        photons.forEach((photon, i) => {
+                            if (transmittedPhotonIndices.includes(i)) {
+                                photon.mesh.position.y = BOTTOM_SURFACE;
+                                photon.mesh.material.opacity = 1;
+                            }
+                        });
+                        
+                        // Create frozen copies at bottom surface
+                        const transmittedCount = transmittedPhotonIndices.length;
+                        photonsAtBottom = createFrozenPhotons(BOTTOM_SURFACE, transmittedCount);
+                        
+                        setTimeout(() => {
+                            if (isAnimating && animationState === 'at_bottom') {
+                                animationState = 'departing';
+                            }
+                        }, 1500);
+                    }
+                    break;
+                    
+                case 'departing':
+                    animationProgress += speed;
+                    photons.forEach((photon, i) => {
+                        if (transmittedPhotonIndices.includes(i) && !photon.absorbed) {
+                            photon.mesh.position.y = BOTTOM_SURFACE - 3 * animationProgress;
+                            photon.mesh.material.opacity = Math.max(0, 1 - animationProgress * 1.5);
+                            photon.mesh.material.transparent = true;
+                        }
+                    });
+                    
+                    if (animationProgress >= 1.0) {
+                        animationState = 'idle';
+                        isAnimating = false;
+                        document.getElementById('animateBtn').textContent = 'Start Animation';
+                        document.getElementById('animateBtn').disabled = false;
+                    }
+                    break;
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updateAnimation();
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
