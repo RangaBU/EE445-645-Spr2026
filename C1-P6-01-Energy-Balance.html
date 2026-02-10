@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiative Transfer Visualization</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+            border-radius: 12px;
+            padding: 25px;
+            min-width: 320px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #ff8c00;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .control-group {
+            margin-bottom: 22px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #b0b0b0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 140, 0, 0.2);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #ff8c00;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #ff8c00;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+            box-shadow: 0 0 10px rgba(255, 140, 0, 0.5);
+        }
+        
+        .value-display {
+            display: inline-block;
+            background: rgba(255, 140, 0, 0.15);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #ff8c00;
+            margin-left: 10px;
+            font-weight: 600;
+        }
+        
+        #legend {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 240px;
+            max-width: 280px;
+        }
+        
+        .legend-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #ff8c00;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 9px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            flex-shrink: 0;
+        }
+        
+        .info {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 280px;
+        }
+        
+        .info-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #ff8c00;
+        }
+        
+        .info-text {
+            font-size: 11px;
+            line-height: 1.6;
+            color: #b0b0b0;
+        }
+        
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 140, 0, 0.2);
+        }
+        
+        .stat-label {
+            color: #808080;
+        }
+        
+        .stat-value {
+            color: #ff8c00;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="controls">
+        <h1>Radiative Transfer</h1>
+        
+        <div class="control-group">
+            <label>Emission Rate <span class="value-display" id="emission-value">5 photons/s</span></label>
+            <input type="range" id="emission-rate" min="0" max="20" value="5" step="1">
+        </div>
+        
+        <div class="control-group">
+            <label>Absorption Coefficient <span class="value-display" id="absorption-value">0.30</span></label>
+            <div style="font-size: 9px; color: #808080; margin-bottom: 4px;">σₐ</div>
+            <input type="range" id="absorption-prob" min="0" max="100" value="30" step="5">
+        </div>
+        
+        <div class="control-group">
+            <label>Scattering Coefficient <span class="value-display" id="scattering-value">0.40</span></label>
+            <div style="font-size: 9px; color: #808080; margin-bottom: 4px;">σ′ₛ</div>
+            <input type="range" id="scattering-prob" min="0" max="100" value="40" step="5">
+        </div>
+    </div>
+    
+    <div id="legend">
+        <div class="legend-title">Legend</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffffff;"></div>
+            <span>Host Material Particles</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff8c00; opacity: 0.3;"></div>
+            <span>Domain Boundary (∂V)</span>
+        </div>
+        <div style="font-size: 9px; margin: 8px 0 4px 0; color: #ff8c00; font-weight: 600;">Photons:</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #4da6ff;"></div>
+            <span>Direct (0)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #40ff40;"></div>
+            <span>1× scatter</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffff40;"></div>
+            <span>2× scatter</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff8040;"></div>
+            <span>3+ scatter</span>
+        </div>
+        <div style="font-size: 9px; margin: 8px 0 4px 0; color: #ff8c00; font-weight: 600;">Events:</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff3300;"></div>
+            <span>Interaction</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #4da6ff;"></div>
+            <span>Exit trace</span>
+        </div>
+        <div class="stat" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 140, 0, 0.2);">
+            <span class="stat-label">Active Photons:</span>
+            <span class="stat-value" id="photon-count">0</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Total Emitted:</span>
+            <span class="stat-value" id="total-emitted">0</span>
+        </div>
+    </div>
+    
+    <div class="info">
+        <div class="info-title">Energy Balance</div>
+        <div class="info-text" style="font-size: 10px; line-height: 1.8;">
+            <div style="text-align: center; margin-bottom: 12px; color: #ff8c00; font-weight: 600;">
+                Total Source = Net Outflow + Absorption
+            </div>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Total Source:</span>
+            <span class="stat-value" id="total-source">0</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Net Outflow:</span>
+            <span class="stat-value" id="net-outflow">0</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Absorbed:</span>
+            <span class="stat-value" id="total-absorbed">0</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">Scattered:</span>
+            <span class="stat-value" id="total-scattered">0</span>
+        </div>
+        <div class="stat" style="border-top: 2px solid #ff8c00; margin-top: 8px; padding-top: 8px;">
+            <span class="stat-label">Balance Check:</span>
+            <span class="stat-value" id="balance-check" style="font-size: 10px;">—</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 10);
+        camera.lookAt(0, 0, 0);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        
+        // Orbit controls (manual implementation)
+        let isDragging = false;
+        let isPanning = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let cameraRotation = { x: 0, y: 0 };
+        let cameraDistance = 15;
+        let cameraTarget = new THREE.Vector3(0, 0, 0);
+        
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            if (e.button === 2) {
+                isPanning = true;
+            } else {
+                isDragging = true;
+            }
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+        
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                cameraRotation.y += deltaX * 0.005;
+                cameraRotation.x += deltaY * 0.005;
+                cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, cameraRotation.x));
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            } else if (isPanning) {
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                const panSpeed = 0.01;
+                cameraTarget.x -= deltaX * panSpeed;
+                cameraTarget.y += deltaY * panSpeed;
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+        
+        renderer.domElement.addEventListener('mouseup', () => {
+            isDragging = false;
+            isPanning = false;
+        });
+        
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            cameraDistance += e.deltaY * 0.01;
+            cameraDistance = Math.max(5, Math.min(30, cameraDistance));
+        });
+        
+        renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        function updateCamera() {
+            camera.position.x = cameraTarget.x + cameraDistance * Math.cos(cameraRotation.x) * Math.sin(cameraRotation.y);
+            camera.position.y = cameraTarget.y + cameraDistance * Math.sin(cameraRotation.x);
+            camera.position.z = cameraTarget.z + cameraDistance * Math.cos(cameraRotation.x) * Math.cos(cameraRotation.y);
+            camera.lookAt(cameraTarget);
+        }
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+        
+        const pointLight1 = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight1.position.set(10, 10, 10);
+        scene.add(pointLight1);
+        
+        const pointLight2 = new THREE.PointLight(0xff8c00, 0.5, 100);
+        pointLight2.position.set(-10, -10, -10);
+        scene.add(pointLight2);
+        
+        // Create a container for the domain and all its contents
+        const domainContainer = new THREE.Group();
+        scene.add(domainContainer);
+        
+        // Create ellipsoid domain (wireframe)
+        const ellipsoidGeometry = new THREE.SphereGeometry(1, 32, 32);
+        const ellipsoidMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff8c00,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3
+        });
+        const ellipsoid = new THREE.Mesh(ellipsoidGeometry, ellipsoidMaterial);
+        ellipsoid.scale.set(4, 3, 2.5); // Make it ellipsoidal
+        domainContainer.add(ellipsoid);
+        
+        // Add domain label
+        const createTextSprite = (text, color) => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 128;
+            
+            context.fillStyle = color;
+            context.font = 'bold 60px Space Grotesk, sans-serif';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 256, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(4, 1, 1);
+            return sprite;
+        };
+        
+        const domainLabel = createTextSprite('Domain V', '#ff8c00');
+        domainLabel.position.set(0, 4, 0);
+        domainContainer.add(domainLabel);
+        
+        const boundaryLabel = createTextSprite('∂V', '#ff8c00');
+        boundaryLabel.position.set(4.5, 0, 0);
+        boundaryLabel.scale.set(2, 0.5, 1);
+        domainContainer.add(boundaryLabel);
+        
+        // Create host material particles (white spheres) - VERY conservative bounds
+        const hostParticles = [];
+        const particleGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+        const particleMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            emissive: 0xffffff,
+            emissiveIntensity: 0.2,
+            shininess: 100
+        });
+        
+        // Generate random particles inside ellipsoid - use spherical sampling then scale
+        for (let i = 0; i < 150; i++) {
+            // Generate uniform random point in unit sphere
+            let u = Math.random();
+            let v = Math.random();
+            let theta = 2 * Math.PI * u;
+            let phi = Math.acos(2 * v - 1);
+            
+            // Random radius - use cube root for uniform distribution in volume
+            let r = Math.pow(Math.random(), 1/3) * 0.85; // Stay at 85% of radius
+            
+            // Convert to Cartesian in unit sphere
+            let x = r * Math.sin(phi) * Math.cos(theta);
+            let y = r * Math.sin(phi) * Math.sin(theta);
+            let z = r * Math.cos(phi);
+            
+            // Scale to ellipsoid dimensions
+            x *= 4.0;  // semi-axis a
+            y *= 3.0;  // semi-axis b  
+            z *= 2.5;  // semi-axis c
+            
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            particle.position.set(x, y, z);
+            particle.userData.originalPosition = new THREE.Vector3(x, y, z);
+            domainContainer.add(particle);
+            hostParticles.push(particle);
+        }
+        
+        // Photon system
+        class Explosion {
+            constructor(position) {
+                this.position = position.clone();
+                this.age = 0;
+                this.maxAge = 20;
+                this.particles = [];
+                
+                // Create explosion particles
+                const particleCount = 12;
+                for (let i = 0; i < particleCount; i++) {
+                    const geometry = new THREE.SphereGeometry(0.05, 4, 4);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0xff3300,
+                        transparent: true,
+                        opacity: 1
+                    });
+                    const particle = new THREE.Mesh(geometry, material);
+                    particle.position.copy(this.position);
+                    
+                    // Random velocity
+                    const theta = (i / particleCount) * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    const speed = 0.1 + Math.random() * 0.1;
+                    
+                    particle.userData.velocity = new THREE.Vector3(
+                        speed * Math.sin(phi) * Math.cos(theta),
+                        speed * Math.sin(phi) * Math.sin(theta),
+                        speed * Math.cos(phi)
+                    );
+                    
+                    scene.add(particle);
+                    this.particles.push(particle);
+                }
+                
+                // Add flash
+                const flashGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                const flashMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff3300,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                this.flash = new THREE.Mesh(flashGeometry, flashMaterial);
+                this.flash.position.copy(this.position);
+                scene.add(this.flash);
+            }
+            
+            update() {
+                this.age++;
+                const progress = this.age / this.maxAge;
+                
+                // Update particles
+                this.particles.forEach(particle => {
+                    particle.position.add(particle.userData.velocity);
+                    particle.material.opacity = 1 - progress;
+                    particle.scale.setScalar(1 - progress * 0.5);
+                });
+                
+                // Update flash
+                if (this.flash) {
+                    this.flash.scale.setScalar(1 + progress * 2);
+                    this.flash.material.opacity = 0.8 * (1 - progress);
+                }
+                
+                return this.age < this.maxAge;
+            }
+            
+            destroy() {
+                this.particles.forEach(particle => {
+                    scene.remove(particle);
+                    particle.geometry.dispose();
+                    particle.material.dispose();
+                });
+                if (this.flash) {
+                    scene.remove(this.flash);
+                    this.flash.geometry.dispose();
+                    this.flash.material.dispose();
+                }
+            }
+        }
+        
+        class ExitTrace {
+            constructor(startPos, direction) {
+                this.age = 0;
+                this.maxAge = 60;
+                
+                // Create line geometry
+                const lineLength = 5;
+                const endPos = startPos.clone().add(direction.clone().multiplyScalar(lineLength));
+                
+                const points = [startPos.clone(), endPos];
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({
+                    color: 0x4da6ff,
+                    transparent: true,
+                    opacity: 0.6,
+                    linewidth: 2
+                });
+                
+                this.line = new THREE.Line(geometry, material);
+                scene.add(this.line);
+                
+                // Create traveling photon
+                const photonGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const photonMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x4da6ff,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                this.photon = new THREE.Mesh(photonGeometry, photonMaterial);
+                this.photon.position.copy(startPos);
+                scene.add(this.photon);
+                
+                this.direction = direction.clone().normalize();
+                this.startPos = startPos.clone();
+            }
+            
+            update() {
+                this.age++;
+                const progress = this.age / this.maxAge;
+                
+                // Move photon along trace
+                this.photon.position.copy(this.startPos).add(
+                    this.direction.clone().multiplyScalar(progress * 5)
+                );
+                
+                // Fade out
+                this.line.material.opacity = 0.6 * (1 - progress);
+                this.photon.material.opacity = 0.9 * (1 - progress);
+                
+                return this.age < this.maxAge;
+            }
+            
+            destroy() {
+                scene.remove(this.line);
+                scene.remove(this.photon);
+                this.line.geometry.dispose();
+                this.line.material.dispose();
+                this.photon.geometry.dispose();
+                this.photon.material.dispose();
+            }
+        }
+        
+        class Photon {
+            constructor() {
+                this.position = new THREE.Vector3();
+                this.velocity = new THREE.Vector3();
+                this.alive = true;
+                this.age = 0;
+                this.maxAge = 200; // frames
+                this.scatterCount = 0; // Track number of scattering events
+                
+                // Random emission point inside ellipsoid - use spherical sampling
+                let u = Math.random();
+                let v = Math.random();
+                let emitTheta = 2 * Math.PI * u;
+                let emitPhi = Math.acos(2 * v - 1);
+                let r = Math.pow(Math.random(), 1/3) * 0.7; // Within 70% of radius
+                
+                let x = r * Math.sin(emitPhi) * Math.cos(emitTheta) * 4.0;
+                let y = r * Math.sin(emitPhi) * Math.sin(emitTheta) * 3.0;
+                let z = r * Math.cos(emitPhi) * 2.5;
+                
+                this.position.set(x, y, z);
+                
+                // Random direction
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const speed = 0.05;
+                
+                this.velocity.set(
+                    speed * Math.sin(phi) * Math.cos(theta),
+                    speed * Math.sin(phi) * Math.sin(theta),
+                    speed * Math.cos(phi)
+                );
+                
+                // Create mesh
+                const geometry = new THREE.SphereGeometry(0.12, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0x4da6ff,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+                
+                // Add glow
+                const glowGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+                const glowMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x4da6ff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                this.glow = new THREE.Mesh(glowGeometry, glowMaterial);
+                this.mesh.add(this.glow);
+            }
+            
+            updateColor() {
+                // Change color based on scatter count to visualize multiple scattering
+                if (this.scatterCount === 0) {
+                    this.mesh.material.color.setHex(0x4da6ff); // Blue - no scattering
+                } else if (this.scatterCount === 1) {
+                    this.mesh.material.color.setHex(0x40ff40); // Green - scattered once
+                } else if (this.scatterCount === 2) {
+                    this.mesh.material.color.setHex(0xffff40); // Yellow - scattered twice
+                } else {
+                    this.mesh.material.color.setHex(0xff8040); // Orange - scattered 3+ times
+                }
+            }
+            
+            update(absorptionProb, scatteringProb) {
+                if (!this.alive) return;
+                
+                this.age++;
+                
+                // Move photon
+                this.position.add(this.velocity);
+                this.mesh.position.copy(this.position);
+                
+                // Check if inside ellipsoid
+                const normalizedPos = 
+                    (this.position.x * this.position.x) / (4 * 4) +
+                    (this.position.y * this.position.y) / (3 * 3) +
+                    (this.position.z * this.position.z) / (2.5 * 2.5);
+                
+                if (normalizedPos > 1 || this.age > this.maxAge) {
+                    // Exit domain - create trace (can be scattered or non-interacting photon)
+                    totalExited++;
+                    const exitDirection = this.velocity.clone().normalize();
+                    exitTraces.push(new ExitTrace(this.position.clone(), exitDirection));
+                    this.destroy();
+                    return;
+                }
+                
+                // Random interactions with host material
+                const rand = Math.random();
+                
+                if (rand < absorptionProb) {
+                    // ABSORPTION - create red explosion and photon disappears
+                    totalAbsorbed++;
+                    explosions.push(new Explosion(this.position.clone()));
+                    this.destroy();
+                    return;
+                } else if (rand < absorptionProb + scatteringProb) {
+                    // SCATTERING - create red explosion but photon continues in new direction
+                    this.scatterCount++;
+                    totalScattered++;
+                    explosions.push(new Explosion(this.position.clone()));
+                    
+                    // Change direction randomly (scattering event)
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    const speed = this.velocity.length();
+                    
+                    this.velocity.set(
+                        speed * Math.sin(phi) * Math.cos(theta),
+                        speed * Math.sin(phi) * Math.sin(theta),
+                        speed * Math.cos(phi)
+                    );
+                    
+                    // Update color based on scatter count
+                    this.updateColor();
+                    
+                    // Visual feedback - brief flash and scale to show scattering occurred
+                    this.mesh.scale.setScalar(1.5);
+                    
+                    setTimeout(() => {
+                        if (this.mesh) {
+                            this.mesh.scale.setScalar(1);
+                        }
+                    }, 100);
+                }
+                
+                // Fade out near end of life
+                const lifeRatio = this.age / this.maxAge;
+                if (lifeRatio > 0.8) {
+                    this.mesh.material.opacity = 0.9 * (1 - (lifeRatio - 0.8) * 5);
+                }
+            }
+            
+            destroy() {
+                this.alive = false;
+                scene.remove(this.mesh);
+                if (this.mesh.geometry) this.mesh.geometry.dispose();
+                if (this.mesh.material) this.mesh.material.dispose();
+            }
+        }
+        
+        let photons = [];
+        let explosions = [];
+        let exitTraces = [];
+        let totalEmitted = 0;
+        let totalAbsorbed = 0;
+        let totalExited = 0;
+        let totalScattered = 0;
+        let emissionRate = 5; // photons per second
+        let absorptionProb = 0.003;
+        let scatteringProb = 0.004;
+        let timeSinceLastEmission = 0;
+        
+        // Controls
+        document.getElementById('emission-rate').addEventListener('input', (e) => {
+            emissionRate = parseInt(e.target.value);
+            document.getElementById('emission-value').textContent = `${emissionRate} photons/s`;
+        });
+        
+        document.getElementById('absorption-prob').addEventListener('input', (e) => {
+            const value = parseInt(e.target.value) / 100;
+            absorptionProb = value * 0.01; // Scale for per-frame probability
+            document.getElementById('absorption-value').textContent = value.toFixed(2);
+        });
+        
+        document.getElementById('scattering-prob').addEventListener('input', (e) => {
+            const value = parseInt(e.target.value) / 100;
+            scatteringProb = value * 0.01; // Scale for per-frame probability
+            document.getElementById('scattering-value').textContent = value.toFixed(2);
+        });
+        
+        // Animation loop
+        let lastTime = Date.now();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const currentTime = Date.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            
+            // Update camera
+            updateCamera();
+            
+            // Emit photons
+            if (emissionRate > 0) {
+                timeSinceLastEmission += deltaTime;
+                const emissionInterval = 1 / emissionRate;
+                
+                while (timeSinceLastEmission >= emissionInterval) {
+                    photons.push(new Photon());
+                    totalEmitted++;
+                    timeSinceLastEmission -= emissionInterval;
+                }
+            }
+            
+            // Update photons
+            photons = photons.filter(photon => {
+                photon.update(absorptionProb, scatteringProb);
+                return photon.alive;
+            });
+            
+            // Update explosions
+            explosions = explosions.filter(explosion => {
+                const alive = explosion.update();
+                if (!alive) {
+                    explosion.destroy();
+                }
+                return alive;
+            });
+            
+            // Update exit traces
+            exitTraces = exitTraces.filter(trace => {
+                const alive = trace.update();
+                if (!alive) {
+                    trace.destroy();
+                }
+                return alive;
+            });
+            
+            // Update stats
+            document.getElementById('photon-count').textContent = photons.length;
+            document.getElementById('total-emitted').textContent = totalEmitted;
+            
+            // Energy balance statistics
+            document.getElementById('total-source').textContent = totalEmitted;
+            document.getElementById('net-outflow').textContent = totalExited;
+            document.getElementById('total-absorbed').textContent = totalAbsorbed;
+            document.getElementById('total-scattered').textContent = totalScattered;
+            
+            // Balance check: Total Source should equal Net Outflow + Absorption
+            const leftSide = totalEmitted;
+            const rightSide = totalExited + totalAbsorbed;
+            const activePhotons = photons.length;
+            const balanceError = leftSide - rightSide - activePhotons;
+            
+            if (totalEmitted > 0) {
+                document.getElementById('balance-check').textContent = 
+                    `${leftSide} = ${rightSide} + ${activePhotons}`;
+                
+                // Color code based on balance
+                const balanceElement = document.getElementById('balance-check');
+                if (Math.abs(balanceError) < 1) {
+                    balanceElement.style.color = '#00ff88';
+                } else {
+                    balanceElement.style.color = '#ffaa00';
+                }
+            }
+            
+            // Rotate domain container (ellipsoid + particles + labels) for visual effect
+            domainContainer.rotation.y += 0.001;
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

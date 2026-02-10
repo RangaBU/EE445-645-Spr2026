@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergence Theorem 3D Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1a1a2e, #16213e);
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+        .panel {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        #control-panel {
+            top: 20px;
+            left: 20px;
+            max-width: 350px;
+        }
+        #info-panel {
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+        }
+        #hint-panel {
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        h2 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+            font-size: 20px;
+        }
+        h3 {
+            margin: 0 0 8px 0;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+        p {
+            margin: 0 0 15px 0;
+            color: #34495e;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        button.active {
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        button.inactive {
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 15px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container"></div>
+        
+        <div id="control-panel" class="panel">
+            <h2 id="title">The Setup: A Volume in Space</h2>
+            <p id="description">This cube represents our volume V. Think of it as a box in 3D space. The red surfaces are the boundary ∂V.</p>
+            
+            <div class="button-group">
+                <button id="btn-basic" class="active" onclick="setMode('basic')">1. The Volume</button>
+                <button id="btn-source" class="inactive" onclick="setMode('source')">2. Add a Source</button>
+                <button id="btn-vectors" class="inactive" onclick="setMode('vectors')">3. Show Flow (Vectors)</button>
+                <button id="btn-flux" class="inactive" onclick="setMode('flux')">4. Flux Through Boundary</button>
+            </div>
+            
+            <label class="checkbox-label">
+                <input type="checkbox" id="animate-checkbox" checked onchange="toggleAnimation()">
+                Rotate Animation
+            </label>
+        </div>
+        
+        <div id="info-panel" class="panel">
+            <h3>🎓 The Divergence Theorem in Simple Terms:</h3>
+            <p style="margin: 0;">
+                <strong>Left side (Volume integral):</strong> Add up all the "source strength" inside the volume<br/>
+                <strong>Right side (Surface integral):</strong> Measure total flow escaping through the boundary<br/>
+                <strong>The theorem says:</strong> These two are EQUAL! Whatever flows out must equal what's created inside.
+            </p>
+        </div>
+        
+        <div id="hint-panel" class="panel">
+            💡 Drag to rotate • Scroll to zoom
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        let scene, camera, renderer, cubeGroup, cube, cubeEdges, source, vectorArrows = [];
+        let sourceRings = [];
+        let fluxArrows = [];
+        let fluxFaces = [];
+        let currentMode = 'basic';
+        let animateRotation = true;
+        let mouseDown = false;
+        let mouseX = 0, mouseY = 0;
+        let rotationY = 0.5, rotationX = 0.5;
+        let distance = 12;
+
+        const explanations = {
+            basic: {
+                title: "The Setup: A Volume in Space",
+                text: "This cube represents our volume V. Think of it as a box in 3D space. The red surfaces are the boundary ∂V."
+            },
+            source: {
+                title: "Source Inside the Volume",
+                text: "The glowing gold sphere is a SOURCE - like a water fountain. It creates flow that spreads outward in all directions. The expanding rings show the SOURCE STRENGTH (∇·F) - how much 'stuff' is being created per unit volume."
+            },
+            vectors: {
+                title: "Vector Field (Flow)",
+                text: "The blue arrows show the vector field F - imagine water flowing outward from the source. The arrows point in the direction of flow and their length shows flow speed."
+            },
+            flux: {
+                title: "Flux Through the Boundary",
+                text: "The GREEN arrows piercing the cube faces show FLUX (n·F) - flow crossing the boundary. The glowing green faces highlight where flow exits. Surface integral ∮ dA (n·F) adds all this up."
+            }
+        };
+
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            updateCameraPosition();
+            
+            // Create renderer
+            const container = document.getElementById('canvas-container');
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            scene.add(directionalLight);
+            
+            const pointLight = new THREE.PointLight(0xffffff, 0.3);
+            pointLight.position.set(-10, -10, -5);
+            scene.add(pointLight);
+            
+            // Create a group for cube and its faces
+            cubeGroup = new THREE.Group();
+            scene.add(cubeGroup);
+            
+            // Create cube
+            const cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
+            const cubeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xFF6B6B,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cubeGroup.add(cube);
+            
+            // Add cube edges
+            const edgesGeometry = new THREE.EdgesGeometry(cubeGeometry);
+            const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+            cubeEdges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+            cubeGroup.add(cubeEdges);
+            
+            // Create source sphere
+            const sourceGeometry = new THREE.SphereGeometry(0.3, 32, 32);
+            const sourceMaterial = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,
+                emissive: 0xFFD700,
+                emissiveIntensity: 0.5
+            });
+            source = new THREE.Mesh(sourceGeometry, sourceMaterial);
+            source.visible = false;
+            scene.add(source);
+            
+            // Mouse controls
+            renderer.domElement.addEventListener('mousedown', onMouseDown);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            renderer.domElement.addEventListener('mouseup', onMouseUp);
+            renderer.domElement.addEventListener('wheel', onWheel);
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start animation loop
+            animate();
+        }
+
+        function createVectorField() {
+            // Remove old arrows
+            vectorArrows.forEach(arrow => scene.remove(arrow));
+            vectorArrows = [];
+            
+            const size = 2;
+            const step = 0.6;
+            
+            for (let x = -size; x <= size; x += step) {
+                for (let y = -size; y <= size; y += step) {
+                    for (let z = -size; z <= size; z += step) {
+                        const strength = 0.3;
+                        const dirX = x * strength;
+                        const dirY = y * strength;
+                        const dirZ = z * strength;
+                        const length = Math.sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+                        
+                        if (length >= 0.1) {
+                            const dir = new THREE.Vector3(dirX, dirY, dirZ).normalize();
+                            const origin = new THREE.Vector3(x, y, z);
+                            const arrow = new THREE.ArrowHelper(dir, origin, length, 0x4A90E2, length * 0.2, length * 0.15);
+                            scene.add(arrow);
+                            vectorArrows.push(arrow);
+                        }
+                    }
+                }
+            }
+        }
+
+        function createSourceStrengthRings() {
+            // Remove old rings
+            sourceRings.forEach(ring => scene.remove(ring));
+            sourceRings = [];
+            
+            // Create 3 expanding rings to show source strength
+            for (let i = 0; i < 3; i++) {
+                const ringGeometry = new THREE.RingGeometry(0.5 + i * 0.3, 0.6 + i * 0.3, 32);
+                const ringMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xFFD700,
+                    transparent: true,
+                    opacity: 0.6 - i * 0.15,
+                    side: THREE.DoubleSide
+                });
+                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                ring.userData.index = i;
+                scene.add(ring);
+                sourceRings.push(ring);
+            }
+        }
+
+        function createFluxVisualization() {
+            // Remove old flux elements
+            fluxArrows.forEach(arrow => scene.remove(arrow));
+            fluxFaces.forEach(face => cubeGroup.remove(face));
+            fluxArrows = [];
+            fluxFaces = [];
+            
+            // Create glowing face highlights on each side of the cube
+            // These are added to cubeGroup so they rotate with the cube
+            const facePositions = [
+                { pos: [1.51, 0, 0], rot: [0, Math.PI/2, 0] },  // Right
+                { pos: [-1.51, 0, 0], rot: [0, -Math.PI/2, 0] }, // Left
+                { pos: [0, 1.51, 0], rot: [Math.PI/2, 0, 0] },   // Top
+                { pos: [0, -1.51, 0], rot: [-Math.PI/2, 0, 0] }, // Bottom
+                { pos: [0, 0, 1.51], rot: [0, 0, 0] },           // Front
+                { pos: [0, 0, -1.51], rot: [0, Math.PI, 0] }     // Back
+            ];
+            
+            facePositions.forEach(face => {
+                const planeGeometry = new THREE.PlaneGeometry(3, 3);
+                const planeMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00FF00,
+                    transparent: true,
+                    opacity: 0.2,
+                    side: THREE.DoubleSide
+                });
+                const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+                plane.position.set(...face.pos);
+                plane.rotation.set(...face.rot);
+                cubeGroup.add(plane);  // Add to cubeGroup instead of scene
+                fluxFaces.push(plane);
+            });
+            
+            // Create green arrows showing flux through each face
+            // Arrows stay fixed in world space, showing outward flux
+            const arrowData = [
+                { localPos: [1.5, 0, 0], dir: [1, 0, 0] },    // Right
+                { localPos: [-1.5, 0, 0], dir: [-1, 0, 0] },  // Left
+                { localPos: [0, 1.5, 0], dir: [0, 1, 0] },    // Top
+                { localPos: [0, -1.5, 0], dir: [0, -1, 0] },  // Bottom
+                { localPos: [0, 0, 1.5], dir: [0, 0, 1] },    // Front
+                { localPos: [0, 0, -1.5], dir: [0, 0, -1] }   // Back
+            ];
+            
+            arrowData.forEach(item => {
+                // Store arrow info for dynamic positioning
+                const arrowInfo = {
+                    localPos: new THREE.Vector3(...item.localPos),
+                    dir: new THREE.Vector3(...item.dir),
+                    arrow: null
+                };
+                
+                // Create arrow at initial position
+                const worldPos = new THREE.Vector3();
+                worldPos.copy(arrowInfo.localPos).applyMatrix4(cubeGroup.matrixWorld);
+                
+                const arrow = new THREE.ArrowHelper(
+                    arrowInfo.dir, 
+                    worldPos, 
+                    0.8, 
+                    0x00FF00, 
+                    0.3, 
+                    0.2
+                );
+                scene.add(arrow);
+                arrowInfo.arrow = arrow;
+                fluxArrows.push(arrowInfo);
+            });
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // Update button states
+            document.querySelectorAll('.button-group button').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.add('inactive');
+            });
+            document.getElementById('btn-' + mode).classList.add('active');
+            document.getElementById('btn-' + mode).classList.remove('inactive');
+            
+            // Update text
+            document.getElementById('title').textContent = explanations[mode].title;
+            document.getElementById('description').textContent = explanations[mode].text;
+            
+            // Mode 1: Basic - just cube
+            if (mode === 'basic') {
+                source.visible = false;
+                vectorArrows.forEach(arrow => scene.remove(arrow));
+                vectorArrows = [];
+                sourceRings.forEach(ring => scene.remove(ring));
+                sourceRings = [];
+                fluxArrows.forEach(arrowInfo => scene.remove(arrowInfo.arrow));
+                fluxArrows = [];
+                fluxFaces.forEach(face => cubeGroup.remove(face));
+                fluxFaces = [];
+            }
+            
+            // Mode 2: Source - show source and strength rings
+            if (mode === 'source') {
+                source.visible = true;
+                createSourceStrengthRings();
+                vectorArrows.forEach(arrow => scene.remove(arrow));
+                vectorArrows = [];
+                fluxArrows.forEach(arrowInfo => scene.remove(arrowInfo.arrow));
+                fluxArrows = [];
+                fluxFaces.forEach(face => cubeGroup.remove(face));
+                fluxFaces = [];
+            }
+            
+            // Mode 3: Vectors - show source and vector field
+            if (mode === 'vectors') {
+                source.visible = true;
+                sourceRings.forEach(ring => scene.remove(ring));
+                sourceRings = [];
+                createVectorField();
+                fluxArrows.forEach(arrowInfo => scene.remove(arrowInfo.arrow));
+                fluxArrows = [];
+                fluxFaces.forEach(face => cubeGroup.remove(face));
+                fluxFaces = [];
+            }
+            
+            // Mode 4: Flux - show everything including flux visualization
+            if (mode === 'flux') {
+                source.visible = true;
+                sourceRings.forEach(ring => scene.remove(ring));
+                sourceRings = [];
+                createVectorField();
+                createFluxVisualization();
+            }
+        }
+
+        function toggleAnimation() {
+            animateRotation = document.getElementById('animate-checkbox').checked;
+        }
+
+        function updateCameraPosition() {
+            const x = distance * Math.sin(rotationY) * Math.cos(rotationX);
+            const y = distance * Math.sin(rotationX);
+            const z = distance * Math.cos(rotationY) * Math.cos(rotationX);
+            
+            camera.position.set(x, y, z);
+            camera.lookAt(0, 0, 0);
+        }
+
+        function onMouseDown(event) {
+            mouseDown = true;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+
+        function onMouseMove(event) {
+            if (mouseDown) {
+                const deltaX = event.clientX - mouseX;
+                const deltaY = event.clientY - mouseY;
+                
+                rotationY += deltaX * 0.005;
+                rotationX += deltaY * 0.005;
+                
+                rotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationX));
+                
+                mouseX = event.clientX;
+                mouseY = event.clientY;
+                
+                updateCameraPosition();
+            }
+        }
+
+        function onMouseUp() {
+            mouseDown = false;
+        }
+
+        function onWheel(event) {
+            event.preventDefault();
+            distance += event.deltaY * 0.01;
+            distance = Math.max(5, Math.min(20, distance));
+            updateCameraPosition();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = Date.now() * 0.001;
+            
+            // Auto-rotate if enabled - rotate the entire cube group
+            if (animateRotation) {
+                cubeGroup.rotation.y += 0.005;
+            }
+            
+            // Update cube group matrix
+            cubeGroup.updateMatrixWorld();
+            
+            // Pulse the source sphere
+            if (source.visible) {
+                const scale = 1 + Math.sin(time * 2) * 0.2;
+                source.scale.set(scale, scale, scale);
+            }
+            
+            // Animate source strength rings (expanding outward)
+            if (sourceRings.length > 0) {
+                sourceRings.forEach((ring, i) => {
+                    const offset = (time * 0.5 + i * 0.5) % 2;
+                    const scale = 0.5 + offset * 1.5;
+                    const opacity = Math.max(0, 0.7 - offset * 0.35);
+                    
+                    ring.scale.set(scale, scale, 1);
+                    ring.material.opacity = opacity;
+                    
+                    // Random rotation for visual interest
+                    ring.rotation.x = time * 0.3 + i;
+                    ring.rotation.y = time * 0.2 + i * 0.7;
+                });
+            }
+            
+            // Update flux arrow positions to follow rotating cube faces
+            if (fluxArrows.length > 0) {
+                fluxArrows.forEach(arrowInfo => {
+                    // Calculate world position of the face center
+                    const worldPos = new THREE.Vector3();
+                    worldPos.copy(arrowInfo.localPos).applyMatrix4(cubeGroup.matrixWorld);
+                    
+                    // Calculate world direction (rotated normal)
+                    const worldDir = new THREE.Vector3();
+                    worldDir.copy(arrowInfo.dir).applyQuaternion(cubeGroup.quaternion);
+                    
+                    // Offset the arrow position slightly outside the face
+                    worldPos.add(worldDir.clone().multiplyScalar(0.7));
+                    
+                    // Update arrow
+                    arrowInfo.arrow.position.copy(worldPos);
+                    arrowInfo.arrow.setDirection(worldDir);
+                });
+            }
+            
+            // Pulse flux face highlights
+            if (fluxFaces.length > 0) {
+                const pulseOpacity = 0.15 + Math.sin(time * 2) * 0.1;
+                fluxFaces.forEach(face => {
+                    face.material.opacity = pulseOpacity;
+                });
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
