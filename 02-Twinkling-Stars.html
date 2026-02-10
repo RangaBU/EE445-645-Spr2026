@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stellar Scintillation - Why Stars Twinkle</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(to bottom, #0a0a1a, #1a1a2e);
+            color: #fff;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            color: #fbbf24;
+        }
+        
+        .subtitle {
+            color: #d1d5db;
+            font-size: 1.125rem;
+            margin-bottom: 1rem;
+        }
+        
+        .physics-explanation {
+            background: #111827;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #374151;
+            margin-bottom: 1rem;
+        }
+        
+        .physics-explanation h3 {
+            color: #60a5fa;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+        
+        .physics-explanation p {
+            color: #d1d5db;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+        
+        .equation {
+            background: #1f2937;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            color: #fbbf24;
+            margin: 0.5rem 0;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .control-item:hover {
+            color: #fff;
+        }
+        
+        .control-item input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+        }
+        
+        .control-item input[type="range"] {
+            width: 150px;
+            cursor: pointer;
+        }
+        
+        .control-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .control-label span {
+            font-size: 0.875rem;
+        }
+        
+        .control-label .value {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+        }
+        
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .canvas-container {
+            background: #0a0a1a;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            flex: 1;
+            min-height: 500px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        
+        #canvas3d {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .info-overlay {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 2px solid #fbbf24;
+            min-width: 250px;
+        }
+        
+        .info-overlay h4 {
+            color: #fbbf24;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .info-item {
+            color: #d1d5db;
+            font-size: 0.8rem;
+            margin: 0.25rem 0;
+        }
+        
+        .info-item .label {
+            color: #9ca3af;
+        }
+        
+        .info-item .value {
+            color: #fde047;
+            font-weight: bold;
+        }
+        
+        .legend {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        .legend h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.125rem;
+        }
+        
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            font-size: 0.875rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+        }
+        
+        .legend-color {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        
+        @media (max-width: 768px) {
+            h1 { font-size: 1.5rem; }
+            .subtitle { font-size: 1rem; }
+            .controls { flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+            .info-overlay { position: relative; top: 0; right: 0; margin: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>⭐ Stellar Scintillation: Why Stars Twinkle</h1>
+            <p class="subtitle">Atmospheric refraction due to turbulent refractive index variations</p>
+            
+            <div class="physics-explanation">
+                <h3>Physical Phenomenon:</h3>
+                <p>
+                    Stars appear to twinkle because Earth's atmosphere has turbulent pockets of air with different 
+                    temperatures and densities. These create <strong>random variations in the refractive index</strong> 
+                    (n ≈ 1.0003 ± Δn), which bend starlight as it passes through.
+                </p>
+                <p>
+                    <strong>Snell's Law:</strong> When light crosses boundaries between regions of different refractive indices, 
+                    it bends according to: n₁sin(θ₁) = n₂sin(θ₂)
+                </p>
+                <div class="equation">
+                    Ray deflection: Δθ ≈ (Δn/n) × L/h
+                </div>
+                <p style="font-size: 0.85rem; color: #9ca3af; margin-top: 0.5rem;">
+                    where Δn is refractive index variation, L is path length, h is scale height
+                </p>
+            </div>
+            
+            <div class="controls">
+                <label class="control-item">
+                    <input type="checkbox" id="showAtmosphere" checked>
+                    <span>Show Atmosphere Layers</span>
+                </label>
+                <label class="control-item">
+                    <input type="checkbox" id="showRays" checked>
+                    <span>Show Light Rays</span>
+                </label>
+                <div class="control-label">
+                    <span>Turbulence Intensity:</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="range" id="turbulenceSlider" min="0" max="100" value="50">
+                        <span class="value" id="turbulenceValue">50%</span>
+                    </div>
+                </div>
+                <button id="toggleAnimation" class="btn btn-primary">Pause Animation</button>
+            </div>
+        </div>
+        
+        <!-- 3D Canvas -->
+        <div class="canvas-container">
+            <canvas id="canvas3d"></canvas>
+            <div class="info-overlay">
+                <h4>ATMOSPHERIC CONDITIONS:</h4>
+                <div class="info-item">
+                    <span class="label">Base refractive index:</span>
+                    <span class="value">n₀ = 1.0003</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Turbulent variation:</span>
+                    <span class="value">Δn = ±<span id="deltaValue">0.00001</span></span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Rays reaching observer:</span>
+                    <span class="value" style="color: #22ff44;"><span id="visibilityValue">--</span></span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Observer sees:</span>
+                    <span class="value" style="color: #fbbf24;">★ Twinkling</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <h3>Visual Elements:</h3>
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #fbbf24;"></div>
+                    <span><strong>Yellow star:</strong> Distant star (light source)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #22ff44;"></div>
+                    <span><strong>Green rays:</strong> Reach observer (visible)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ef4444;"></div>
+                    <span><strong>Red rays:</strong> Bent away (not visible)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #22c55e;"></div>
+                    <span><strong>Green point:</strong> Observer on Earth</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #60a5fa; opacity: 0.3;"></div>
+                    <span><strong>Blue layers:</strong> Atmospheric turbulence</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #a855f7;"></div>
+                    <span><strong>Purple zones:</strong> Higher refractive index</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #06b6d4;"></div>
+                    <span><strong>Cyan zones:</strong> Lower refractive index</span>
+                </div>
+            </div>
+            <p style="color: #9ca3af; font-style: italic; font-size: 0.75rem; margin-top: 0.75rem;">
+                The visualization shows multiple light rays from a star being bent differently by turbulent atmospheric 
+                layers with randomly varying refractive indices. <strong style="color: #22ff44;">Green rays</strong> successfully 
+                reach the observer's eye, while <strong style="color: #ef4444;">red rays</strong> are bent away and miss the observer. 
+                As atmospheric conditions change, different rays reach the observer, causing the star's apparent brightness to 
+                fluctuate - creating the twinkling effect we observe.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const canvas = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(
+            70,
+            canvas.parentElement.clientWidth / canvas.parentElement.clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(15, 8, 15);
+        camera.lookAt(0, 2, 0); // Look at the atmosphere center
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        // Star (distant light source)
+        const starGeometry = new THREE.SphereGeometry(0.7, 32, 32);
+        const starMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffd700,
+            emissive: 0xffd700,
+            emissiveIntensity: 1
+        });
+        const star = new THREE.Mesh(starGeometry, starMaterial);
+        star.position.set(0, 12, 0); // Much higher above atmosphere
+        scene.add(star);
+
+        // Add glow to star
+        const starGlowGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+        const starGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffd700,
+            transparent: true,
+            opacity: 0.4
+        });
+        const starGlow = new THREE.Mesh(starGlowGeometry, starGlowMaterial);
+        starGlow.position.copy(star.position);
+        scene.add(starGlow);
+        
+        // Add star rays/sparkle effect
+        const starRayGeometry = new THREE.SphereGeometry(1.8, 32, 32);
+        const starRayMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffed4e,
+            transparent: true,
+            opacity: 0.2,
+            wireframe: true
+        });
+        const starRays = new THREE.Mesh(starRayGeometry, starRayMaterial);
+        starRays.position.copy(star.position);
+        scene.add(starRays);
+
+        // Observer on Earth
+        const observerGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+        const observerMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x22c55e,
+            emissive: 0x22c55e,
+            emissiveIntensity: 0.5
+        });
+        const observer = new THREE.Mesh(observerGeometry, observerMaterial);
+        observer.position.set(0, -8, 0); // Much lower below atmosphere
+        scene.add(observer);
+
+        // Atmospheric layers with varying refractive indices
+        const atmosphereLayers = [];
+        const numLayers = 10;
+        const turbulentZones = [];
+        
+        function createAtmosphereLayers() {
+            // Clear existing layers
+            atmosphereLayers.forEach(layer => {
+                scene.remove(layer);
+                if (layer.geometry) layer.geometry.dispose();
+                if (layer.material) layer.material.dispose();
+            });
+            atmosphereLayers.length = 0;
+            
+            // Clear existing turbulent zones
+            turbulentZones.forEach(zone => {
+                if (zone.mesh) {
+                    scene.remove(zone.mesh);
+                    if (zone.mesh.geometry) zone.mesh.geometry.dispose();
+                    if (zone.mesh.material) zone.mesh.material.dispose();
+                }
+            });
+            turbulentZones.length = 0;
+            
+            // Atmosphere positioned between star (y=12) and observer (y=-8)
+            // Let's put it from y=2 to y=7
+            for (let i = 0; i < numLayers; i++) {
+                const yPos = 2 + (i * 0.5);
+                const width = 14;
+                const height = 0.4;
+                
+                const geometry = new THREE.BoxGeometry(width, height, 14);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x3b82f6,
+                    transparent: true,
+                    opacity: 0.15,
+                    side: THREE.DoubleSide
+                });
+                
+                const layer = new THREE.Mesh(geometry, material);
+                layer.position.set(0, yPos, 0);
+                scene.add(layer);
+                atmosphereLayers.push(layer);
+                
+                // Create turbulent zones within each layer
+                const zonesInLayer = 4 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < zonesInLayer; j++) {
+                    const zone = {
+                        layer: i,
+                        x: (Math.random() - 0.5) * 12,
+                        z: (Math.random() - 0.5) * 12,
+                        size: 0.6 + Math.random() * 1.2,
+                        refractiveIndexDelta: 0,
+                        targetDelta: 0,
+                        mesh: null
+                    };
+                    
+                    // Visual representation of turbulent zone
+                    const zoneGeometry = new THREE.SphereGeometry(zone.size, 16, 16);
+                    const zoneMaterial = new THREE.MeshPhongMaterial({
+                        color: 0xa855f7,
+                        transparent: true,
+                        opacity: 0.25,
+                        emissive: 0xa855f7,
+                        emissiveIntensity: 0.15
+                    });
+                    const zoneMesh = new THREE.Mesh(zoneGeometry, zoneMaterial);
+                    zoneMesh.position.set(zone.x, yPos, zone.z);
+                    scene.add(zoneMesh);
+                    zone.mesh = zoneMesh;
+                    
+                    turbulentZones.push(zone);
+                }
+            }
+        }
+        
+        createAtmosphereLayers();
+
+        // Light rays from star to observer
+        const rays = [];
+        const numRays = 12; // Increased to show more ray paths
+        
+        // Define turbulence intensity before using it
+        let turbulenceIntensity = 0.5;
+        
+        function createRays() {
+            rays.forEach(ray => {
+                if (ray.line) {
+                    scene.remove(ray.line);
+                    if (ray.line.geometry) ray.line.geometry.dispose();
+                    if (ray.line.material) ray.line.material.dispose();
+                }
+                if (ray.points) {
+                    ray.points.forEach(pt => {
+                        scene.remove(pt);
+                        if (pt.geometry) pt.geometry.dispose();
+                        if (pt.material) pt.material.dispose();
+                    });
+                }
+            });
+            rays.length = 0;
+            
+            for (let i = 0; i < numRays; i++) {
+                const angle = (i / numRays) * Math.PI * 2;
+                const radius = 0.8; // Larger radius from center of star
+                const offsetX = Math.cos(angle) * radius;
+                const offsetZ = Math.sin(angle) * radius;
+                
+                const ray = {
+                    startPoint: new THREE.Vector3(
+                        star.position.x + offsetX,
+                        star.position.y,
+                        star.position.z + offsetZ
+                    ),
+                    segments: [],
+                    line: null,
+                    points: [],
+                    hitsObserver: false, // Track if ray reaches observer
+                    missDistance: 0 // How far ray misses the observer
+                };
+                
+                rays.push(ray);
+            }
+        }
+        
+        createRays();
+        
+        // Initialize ray paths
+        updateRayPaths(turbulenceIntensity);
+
+        // Update ray paths based on refractive index variations
+        function updateRayPaths(turbulenceIntensity) {
+            let raysHittingObserver = 0;
+            
+            rays.forEach(ray => {
+                // Clean up existing line
+                if (ray.line) {
+                    scene.remove(ray.line);
+                    if (ray.line.geometry) ray.line.geometry.dispose();
+                    if (ray.line.material) ray.line.material.dispose();
+                    ray.line = null;
+                }
+                
+                // Clean up existing points
+                if (ray.points && ray.points.length > 0) {
+                    ray.points.forEach(pt => {
+                        scene.remove(pt);
+                        if (pt.geometry) pt.geometry.dispose();
+                        if (pt.material) pt.material.dispose();
+                    });
+                    ray.points = [];
+                }
+                
+                const segments = [];
+                let currentPos = ray.startPoint.clone();
+                let currentDir = new THREE.Vector3(
+                    observer.position.x - ray.startPoint.x,
+                    observer.position.y - ray.startPoint.y,
+                    observer.position.z - ray.startPoint.z
+                ).normalize();
+                
+                segments.push(currentPos.clone());
+                
+                // Trace ray through atmosphere layers (y = 2 to 7)
+                for (let i = 0; i < numLayers; i++) {
+                    const layerY = 2 + (i * 0.5);
+                    
+                    // Calculate intersection with this layer
+                    if (currentDir.y !== 0) {
+                        const t = (layerY - currentPos.y) / currentDir.y;
+                        if (t > 0) {
+                            currentPos = currentPos.clone().add(currentDir.clone().multiplyScalar(t));
+                            
+                            // Check for refractive index variations in nearby turbulent zones
+                            let totalDeflection = new THREE.Vector3(0, 0, 0);
+                            turbulentZones.forEach(zone => {
+                                if (zone.layer === i) {
+                                    const distance = Math.sqrt(
+                                        Math.pow(currentPos.x - zone.x, 2) + 
+                                        Math.pow(currentPos.z - zone.z, 2)
+                                    );
+                                    
+                                    if (distance < zone.size * 2) {
+                                        // Calculate direction to observer in XZ plane
+                                        const toObserver = new THREE.Vector3(
+                                            observer.position.x - currentPos.x,
+                                            0,
+                                            observer.position.z - currentPos.z
+                                        ).normalize();
+                                        
+                                        // Deflection magnitude based on Snell's law approximation
+                                        const deflectionMagnitude = zone.refractiveIndexDelta * 
+                                            turbulenceIntensity * 1.2 * (1 - distance / (zone.size * 2));
+                                        
+                                        // If refractiveIndexDelta > 0 (higher index, purple zones):
+                                        // Light bends AWAY from observer (toward the zone center)
+                                        // If refractiveIndexDelta < 0 (lower index, cyan zones):
+                                        // Light bends TOWARD observer (away from zone center)
+                                        
+                                        const deflectionDir = new THREE.Vector3(
+                                            currentPos.x - zone.x,
+                                            0,
+                                            currentPos.z - zone.z
+                                        ).normalize();
+                                        
+                                        // Apply deflection: positive delta pushes away from observer
+                                        if (zone.refractiveIndexDelta > 0) {
+                                            // Higher refractive index - bend away from observer
+                                            totalDeflection.add(deflectionDir.multiplyScalar(deflectionMagnitude));
+                                        } else {
+                                            // Lower refractive index - bend toward observer
+                                            totalDeflection.sub(deflectionDir.multiplyScalar(Math.abs(deflectionMagnitude)));
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            // Apply deflection to ray direction
+                            currentDir.add(totalDeflection).normalize();
+                            segments.push(currentPos.clone());
+                        }
+                    }
+                }
+                
+                // Calculate final endpoint of ray
+                if (currentDir.y !== 0) {
+                    const finalT = (observer.position.y - currentPos.y) / currentDir.y;
+                    if (finalT > 0) {
+                        const finalPos = currentPos.clone().add(currentDir.clone().multiplyScalar(finalT));
+                        segments.push(finalPos);
+                        
+                        // Check if ray hits observer (within threshold)
+                        const observerRadius = 0.8; // Detection radius
+                        const distanceToObserver = Math.sqrt(
+                            Math.pow(finalPos.x - observer.position.x, 2) + 
+                            Math.pow(finalPos.z - observer.position.z, 2)
+                        );
+                        
+                        ray.hitsObserver = distanceToObserver < observerRadius;
+                        ray.missDistance = distanceToObserver;
+                        
+                        if (ray.hitsObserver) {
+                            raysHittingObserver++;
+                        }
+                    } else {
+                        segments.push(currentPos.clone());
+                        ray.hitsObserver = false;
+                    }
+                } else {
+                    segments.push(currentPos.clone());
+                    ray.hitsObserver = false;
+                }
+                
+                // Color coding: green if hits observer, red if misses
+                let rayColor, rayOpacity;
+                if (ray.hitsObserver) {
+                    rayColor = 0x22ff44; // Bright green - visible to observer
+                    rayOpacity = 0.9;
+                } else {
+                    rayColor = 0xff4444; // Red - bent away from observer
+                    rayOpacity = 0.5;
+                }
+                
+                // Create line geometry
+                const geometry = new THREE.BufferGeometry().setFromPoints(segments);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: rayColor,
+                    transparent: true,
+                    opacity: rayOpacity,
+                    linewidth: ray.hitsObserver ? 3 : 2
+                });
+                ray.line = new THREE.Line(geometry, material);
+                scene.add(ray.line);
+                
+                // Add small spheres at refraction points
+                segments.forEach((point, idx) => {
+                    if (idx > 0 && idx < segments.length - 1) {
+                        const ptGeom = new THREE.SphereGeometry(0.1, 8, 8);
+                        const ptMat = new THREE.MeshBasicMaterial({ 
+                            color: ray.hitsObserver ? 0x44ff66 : 0xff6666,
+                            transparent: true,
+                            opacity: ray.hitsObserver ? 0.8 : 0.4
+                        });
+                        const ptMesh = new THREE.Mesh(ptGeom, ptMat);
+                        ptMesh.position.copy(point);
+                        scene.add(ptMesh);
+                        ray.points.push(ptMesh);
+                    }
+                });
+                
+                // Add endpoint marker
+                if (segments.length > 1) {
+                    const endGeom = new THREE.SphereGeometry(0.15, 12, 12);
+                    const endMat = new THREE.MeshBasicMaterial({ 
+                        color: ray.hitsObserver ? 0x00ff00 : 0xff0000,
+                        transparent: true,
+                        opacity: ray.hitsObserver ? 0.9 : 0.6
+                    });
+                    const endMarker = new THREE.Mesh(endGeom, endMat);
+                    endMarker.position.copy(segments[segments.length - 1]);
+                    scene.add(endMarker);
+                    ray.points.push(endMarker);
+                }
+            });
+            
+            // Update info display
+            const visibilityPercent = Math.round((raysHittingObserver / rays.length) * 100);
+            const visibilityElement = document.getElementById('visibilityValue');
+            if (visibilityElement) {
+                visibilityElement.textContent = visibilityPercent + '%';
+            }
+        }
+
+        // Controls
+        const showAtmosphereCheckbox = document.getElementById('showAtmosphere');
+        const showRaysCheckbox = document.getElementById('showRays');
+        const turbulenceSlider = document.getElementById('turbulenceSlider');
+        const turbulenceValue = document.getElementById('turbulenceValue');
+        const deltaValue = document.getElementById('deltaValue');
+        const toggleAnimationBtn = document.getElementById('toggleAnimation');
+        
+        let isAnimating = true;
+        
+        turbulenceSlider.addEventListener('input', (e) => {
+            turbulenceIntensity = e.target.value / 100;
+            turbulenceValue.textContent = e.target.value + '%';
+            const delta = (0.00001 * turbulenceIntensity * 2).toExponential(1);
+            deltaValue.textContent = delta;
+        });
+        
+        toggleAnimationBtn.addEventListener('click', () => {
+            isAnimating = !isAnimating;
+            toggleAnimationBtn.textContent = isAnimating ? 'Pause Animation' : 'Resume Animation';
+            toggleAnimationBtn.className = isAnimating ? 'btn btn-primary' : 'btn btn-secondary';
+        });
+
+        // Animation
+        let time = 0;
+        let frameCount = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (isAnimating) {
+                time += 0.016;
+                frameCount++;
+                
+                // Update turbulent zones with random refractive index variations
+                turbulentZones.forEach((zone, idx) => {
+                    // Smooth random walk for refractive index
+                    if (Math.random() < 0.05) {
+                        zone.targetDelta = (Math.random() - 0.5) * 2;
+                    }
+                    zone.refractiveIndexDelta += (zone.targetDelta - zone.refractiveIndexDelta) * 0.1;
+                    
+                    // Update visual appearance based on refractive index
+                    if (zone.mesh) {
+                        if (zone.refractiveIndexDelta > 0) {
+                            zone.mesh.material.color.setHex(0xa855f7); // Purple for higher n
+                            zone.mesh.material.emissive.setHex(0xa855f7);
+                        } else {
+                            zone.mesh.material.color.setHex(0x06b6d4); // Cyan for lower n
+                            zone.mesh.material.emissive.setHex(0x06b6d4);
+                        }
+                        zone.mesh.material.opacity = 0.1 + Math.abs(zone.refractiveIndexDelta) * 0.3 * turbulenceIntensity;
+                        zone.mesh.material.emissiveIntensity = Math.abs(zone.refractiveIndexDelta) * 0.2 * turbulenceIntensity;
+                        
+                        // Slight movement to simulate turbulence
+                        zone.mesh.position.x += Math.sin(time * 2 + idx) * 0.01;
+                        zone.mesh.position.z += Math.cos(time * 1.5 + idx) * 0.01;
+                    }
+                });
+                
+                // Update ray paths only every 3 frames to reduce overhead
+                if (frameCount % 3 === 0) {
+                    updateRayPaths(turbulenceIntensity);
+                }
+                
+                // Star twinkle effect
+                const twinkle = 0.8 + Math.random() * 0.2 * turbulenceIntensity;
+                starMaterial.emissiveIntensity = twinkle;
+                starGlowMaterial.opacity = 0.3 + 0.2 * twinkle;
+                
+                // Rotate star rays for sparkle effect
+                starRays.rotation.x += 0.005;
+                starRays.rotation.y += 0.008;
+            }
+            
+            // Control visibility
+            atmosphereLayers.forEach(layer => {
+                layer.visible = showAtmosphereCheckbox.checked;
+            });
+            turbulentZones.forEach(zone => {
+                if (zone.mesh) zone.mesh.visible = showAtmosphereCheckbox.checked;
+            });
+            
+            rays.forEach(ray => {
+                if (ray.line) ray.line.visible = showRaysCheckbox.checked;
+                if (ray.points && ray.points.length > 0) {
+                    ray.points.forEach(pt => {
+                        if (pt) pt.visible = showRaysCheckbox.checked;
+                    });
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = canvas.parentElement.clientWidth;
+            const height = canvas.parentElement.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiative Transfer - Ellipsoid Medium with Photon Streams</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(to bottom, #0f0f1e, #1a1a2e);
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            color: #fbbf24;
+        }
+        
+        .subtitle {
+            color: #d1d5db;
+            font-size: 1.125rem;
+            margin-bottom: 1rem;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+        }
+        
+        .control-item input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+        }
+        
+        .control-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .control-label .value {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+            cursor: pointer;
+        }
+        
+        .canvas-container {
+            background: #0a0a1a;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            flex: 1;
+            min-height: 600px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #canvas3d {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .legend {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        
+        .legend h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.125rem;
+        }
+        
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            font-size: 0.875rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+        }
+        
+        .legend-color {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌑 Radiative Transfer In an Absorbing and Non-Scattering Medium</h1>
+            <p class="subtitle">Photon streams with absorption: I(s) = I₀ exp(-σs)</p>
+            
+            <div class="controls">
+                <label class="control-item">
+                    <input type="checkbox" id="showEllipsoid" checked>
+                    <span>Show Ellipsoid Wireframe</span>
+                </label>
+                <label class="control-item">
+                    <input type="checkbox" id="showPhotons" checked>
+                    <span>Show Photon Streams</span>
+                </label>
+                <label class="control-item">
+                    <input type="checkbox" id="showHost" checked>
+                    <span>Show Host Material</span>
+                </label>
+                <div class="control-label">
+                    <span>Absorption σ:</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="range" id="sigmaSlider" min="1" max="100" value="30">
+                        <span class="value" id="sigmaValue">0.30</span>
+                    </div>
+                </div>
+                <div class="control-label">
+                    <span>Camera Rotation:</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button id="rotateLeft" style="padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">← Left</button>
+                        <button id="rotateRight" style="padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Right →</button>
+                    </div>
+                </div>
+                <div class="control-item" style="color: #9ca3af; font-size: 0.875rem;">
+                    💡 Drag to rotate • Scroll to zoom • Right-drag to pan
+                </div>
+            </div>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="canvas3d"></canvas>
+        </div>
+        
+        <div class="legend">
+            <h3>Visual Elements:</h3>
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffd700;"></div>
+                    <span><strong>Yellow sphere (top):</strong> Light source</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffdd00; opacity: 0.7;"></div>
+                    <span><strong>Yellow wireframe:</strong> Ellipsoid absorbing medium</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffffff;"></div>
+                    <span><strong>White spheres:</strong> Host material particles</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00ff00;"></div>
+                    <span><strong>Green photons:</strong> Light particles streaming through</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b35;"></div>
+                    <span><strong>Orange sphere (top):</strong> Boundary point r⃗<sub>B</sub></span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff1744;"></div>
+                    <span><strong>Red arrow:</strong> Direction vector Ω⃗ (downward)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #3b82f6; opacity: 0.3;"></div>
+                    <span><strong>Blue circle (top):</strong> Entry surface</span>
+                </div>
+            </div>
+            <p style="color: #9ca3af; font-style: italic; font-size: 0.75rem; margin-top: 0.75rem;">
+                <strong>Demonstration:</strong> Green photons stream downward through the ellipsoidal absorbing medium. 
+                Inside the medium, photons encounter host material (white spheres) and are absorbed according to Beer-Lambert Law: 
+                I(s) = I₀ exp(-σs). Some photons are completely absorbed (disappear inside the medium), while others successfully 
+                exit through the bottom. Adjust the absorption coefficient σ to see how it affects the number of photons that make 
+                it through versus those that are absorbed.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(
+            65,
+            canvas.parentElement.clientWidth / canvas.parentElement.clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(10, 8, 10);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 5;
+        controls.maxDistance = 30;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        directionalLight.position.set(10, 15, 10);
+        scene.add(directionalLight);
+
+        // Light source at TOP
+        const sourceGeometry = new THREE.SphereGeometry(0.6, 32, 32);
+        const sourceMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffd700,
+            emissive: 0xffd700,
+            emissiveIntensity: 1
+        });
+        const source = new THREE.Mesh(sourceGeometry, sourceMaterial);
+        source.position.set(0, 8, 0);
+        scene.add(source);
+
+        // ELLIPSOID with wire grid - YELLOW
+        const ellipsoidRadiusX = 4;
+        const ellipsoidRadiusY = 5;
+        const ellipsoidRadiusZ = 4;
+        
+        const ellipsoidGeometry = new THREE.SphereGeometry(1, 24, 24);
+        const ellipsoidMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffdd00,  // Yellow
+            wireframe: true,
+            transparent: true,
+            opacity: 0.7
+        });
+        const ellipsoid = new THREE.Mesh(ellipsoidGeometry, ellipsoidMaterial);
+        ellipsoid.scale.set(ellipsoidRadiusX, ellipsoidRadiusY, ellipsoidRadiusZ);
+        scene.add(ellipsoid);
+
+        // HOST MATERIAL - white spheres inside ellipsoid
+        const hostParticles = [];
+        const numHostParticles = 100;
+        
+        for (let i = 0; i < numHostParticles; i++) {
+            let x, y, z;
+            do {
+                x = (Math.random() - 0.5) * 2;
+                y = (Math.random() - 0.5) * 2;
+                z = (Math.random() - 0.5) * 2;
+            } while (x*x + y*y + z*z > 1);
+            
+            x *= ellipsoidRadiusX * 0.9;
+            y *= ellipsoidRadiusY * 0.9;
+            z *= ellipsoidRadiusZ * 0.9;
+            
+            const particleGeom = new THREE.SphereGeometry(0.1, 8, 8);
+            const particleMat = new THREE.MeshPhongMaterial({
+                color: 0xffffff,
+                emissive: 0xeeeeee,
+                emissiveIntensity: 0.2
+            });
+            const particle = new THREE.Mesh(particleGeom, particleMat);
+            particle.position.set(x, y, z);
+            scene.add(particle);
+            hostParticles.push(particle);
+        }
+
+        // Boundary surfaces
+        const topY = ellipsoidRadiusY;
+        const bottomY = -ellipsoidRadiusY;
+        
+        const topBoundary = new THREE.Mesh(
+            new THREE.CircleGeometry(ellipsoidRadiusX, 32),
+            new THREE.MeshPhongMaterial({
+                color: 0x3b82f6,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            })
+        );
+        topBoundary.position.set(0, topY, 0);
+        topBoundary.rotation.x = -Math.PI / 2;
+        scene.add(topBoundary);
+
+        // Boundary point marker
+        const boundaryPoint = new THREE.Mesh(
+            new THREE.SphereGeometry(0.25, 20, 20),
+            new THREE.MeshPhongMaterial({
+                color: 0xff6b35,
+                emissive: 0xff6b35,
+                emissiveIntensity: 0.5
+            })
+        );
+        boundaryPoint.position.set(0, topY, 0);
+        scene.add(boundaryPoint);
+
+        // Direction arrow
+        const directionArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(0, -1, 0),
+            new THREE.Vector3(0, topY, 0),
+            4,
+            0xff1744,
+            0.6,
+            0.4
+        );
+        scene.add(directionArrow);
+
+        // Text labels
+        function createTextSprite(text, color = '#ffffff', size = 1.0) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+            context.font = 'Bold 60px Arial';
+            context.fillStyle = color;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 256, 128);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true
+            }));
+            sprite.scale.set(size * 2, size, 1);
+            return sprite;
+        }
+
+        const rBLabel = createTextSprite('r B (Entry)', '#ff6b35', 1.2);
+        rBLabel.position.set(0, topY + 1.5, 0);
+        scene.add(rBLabel);
+
+        const omegaLabel = createTextSprite('Ω (Downward)', '#ff1744', 1.0);
+        omegaLabel.position.set(2, topY - 1.5, 0);
+        scene.add(omegaLabel);
+
+        // PHOTON PARTICLES
+        let sigma = 0.3;
+        const photons = [];
+        const numPhotonStreams = 12;
+        const photonsPerStream = 15;
+        
+        class Photon {
+            constructor(startPos, streamIndex) {
+                this.streamIndex = streamIndex;
+                this.position = startPos.clone();
+                this.velocity = new THREE.Vector3(0, -0.1, 0);
+                this.age = 0;
+                this.maxAge = 200;
+                this.absorbed = false;
+                this.exited = false;
+                this.intensity = 1.0;
+                this.distanceInMedium = 0;
+                
+                const geom = new THREE.SphereGeometry(0.1, 8, 8);
+                const mat = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                this.mesh = new THREE.Mesh(geom, mat);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            isInsideEllipsoid() {
+                const x = this.position.x / ellipsoidRadiusX;
+                const y = this.position.y / ellipsoidRadiusY;
+                const z = this.position.z / ellipsoidRadiusZ;
+                return (x*x + y*y + z*z) <= 1;
+            }
+            
+            update() {
+                this.age++;
+                this.position.add(this.velocity);
+                
+                const inside = this.isInsideEllipsoid();
+                
+                if (inside) {
+                    const ds = this.velocity.length();
+                    this.distanceInMedium += ds;
+                    this.intensity *= Math.exp(-sigma * ds);
+                    
+                    // Reduced absorption probability - more photons exit
+                    if (Math.random() < sigma * ds * 0.8) {  // Reduced from 3 to 0.8
+                        this.absorbed = true;
+                    }
+                }
+                
+                if (!inside && this.position.y < bottomY) {
+                    this.exited = true;
+                }
+                
+                // Keep all photons green
+                this.mesh.material.color.setHex(0x00ff00);
+                this.mesh.material.opacity = 0.9;
+                this.mesh.position.copy(this.position);
+                
+                if (this.age > this.maxAge || this.absorbed || this.exited) {
+                    return true;
+                }
+                return false;
+            }
+            
+            getColor() {
+                // Always return green for this example
+                return new THREE.Color(0x00ff00);
+            }
+            
+            reset() {
+                const angle = (this.streamIndex / numPhotonStreams) * Math.PI * 2;
+                const radius = 2.5;
+                this.position.set(
+                    Math.cos(angle) * radius,
+                    topY + 1,
+                    Math.sin(angle) * radius
+                );
+                this.age = 0;
+                this.absorbed = false;
+                this.exited = false;
+                this.intensity = 1.0;
+                this.distanceInMedium = 0;
+                this.mesh.material.opacity = 0.9;
+            }
+            
+            remove() {
+                scene.remove(this.mesh);
+                if (this.mesh.geometry) this.mesh.geometry.dispose();
+                if (this.mesh.material) this.mesh.material.dispose();
+            }
+        }
+        
+        for (let i = 0; i < numPhotonStreams; i++) {
+            const angle = (i / numPhotonStreams) * Math.PI * 2;
+            const radius = 2.5;
+            
+            for (let j = 0; j < photonsPerStream; j++) {
+                const startPos = new THREE.Vector3(
+                    Math.cos(angle) * radius,
+                    topY + 1 + j * 0.5,
+                    Math.sin(angle) * radius
+                );
+                photons.push(new Photon(startPos, i));
+            }
+        }
+
+        // Controls
+        const showEllipsoidCheckbox = document.getElementById('showEllipsoid');
+        const showPhotonsCheckbox = document.getElementById('showPhotons');
+        const showHostCheckbox = document.getElementById('showHost');
+        const sigmaSlider = document.getElementById('sigmaSlider');
+        const sigmaValue = document.getElementById('sigmaValue');
+        const rotateLeftBtn = document.getElementById('rotateLeft');
+        const rotateRightBtn = document.getElementById('rotateRight');
+        
+        sigmaSlider.addEventListener('input', (e) => {
+            sigma = e.target.value / 100;
+            sigmaValue.textContent = sigma.toFixed(2);
+        });
+
+        // Camera rotation controls
+        let autoRotate = false;
+        let rotationDirection = 0; // -1 for left, 1 for right, 0 for stopped
+        let rotationSpeed = 0.01;
+        
+        rotateLeftBtn.addEventListener('click', () => {
+            if (rotationDirection === -1) {
+                // Already rotating left, stop it
+                rotationDirection = 0;
+                rotateLeftBtn.textContent = '← Left';
+                rotateLeftBtn.style.background = '#3b82f6';
+            } else {
+                // Start rotating left
+                rotationDirection = -1;
+                rotateLeftBtn.textContent = '⏸ Stop';
+                rotateLeftBtn.style.background = '#dc2626';
+                rotateRightBtn.textContent = 'Right →';
+                rotateRightBtn.style.background = '#3b82f6';
+            }
+        });
+        
+        rotateRightBtn.addEventListener('click', () => {
+            if (rotationDirection === 1) {
+                // Already rotating right, stop it
+                rotationDirection = 0;
+                rotateRightBtn.textContent = 'Right →';
+                rotateRightBtn.style.background = '#3b82f6';
+            } else {
+                // Start rotating right
+                rotationDirection = 1;
+                rotateRightBtn.textContent = '⏸ Stop';
+                rotateRightBtn.style.background = '#dc2626';
+                rotateLeftBtn.textContent = '← Left';
+                rotateLeftBtn.style.background = '#3b82f6';
+            }
+        });
+
+        // Render loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            controls.update();
+            
+            // Apply camera rotation if enabled
+            if (rotationDirection !== 0) {
+                const radius = Math.sqrt(
+                    camera.position.x * camera.position.x + 
+                    camera.position.z * camera.position.z
+                );
+                const currentAngle = Math.atan2(camera.position.z, camera.position.x);
+                const newAngle = currentAngle + (rotationDirection * rotationSpeed);
+                
+                camera.position.x = radius * Math.cos(newAngle);
+                camera.position.z = radius * Math.sin(newAngle);
+                camera.lookAt(0, 0, 0);
+            }
+            
+            // Update photons
+            photons.forEach(photon => {
+                if (photon.update()) {
+                    photon.reset();
+                }
+                photon.mesh.visible = showPhotonsCheckbox.checked;
+            });
+            
+            // Control visibility
+            ellipsoid.visible = showEllipsoidCheckbox.checked;
+            hostParticles.forEach(p => p.visible = showHostCheckbox.checked);
+            
+            // Labels face camera
+            rBLabel.lookAt(camera.position);
+            omegaLabel.lookAt(camera.position);
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = canvas.parentElement.clientWidth / canvas.parentElement.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+        });
+    </script>
+</body>
+</html>

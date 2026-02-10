@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Survival Probability - Animated Explanation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(to bottom, #0f0f1e, #1a1a2e);
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            color: #fbbf24;
+        }
+        
+        .equation-display {
+            background: #111827;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 2px solid #fbbf24;
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        .equation-main {
+            font-size: 1.5rem;
+            font-family: 'Courier New', monospace;
+            color: #fde047;
+            margin-bottom: 1rem;
+        }
+        
+        .equation-parts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .part {
+            background: #1f2937;
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 4px solid #60a5fa;
+        }
+        
+        .part-label {
+            color: #60a5fa;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .part-description {
+            color: #d1d5db;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .control-label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .control-label .value {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+            cursor: pointer;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn:hover {
+            background: #2563eb;
+        }
+        
+        .canvas-container {
+            background: #0a0a1a;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            flex: 1;
+            min-height: 600px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #canvas3d {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 2px solid #fbbf24;
+            min-width: 300px;
+        }
+        
+        .info-panel h4 {
+            color: #fbbf24;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-item {
+            color: #d1d5db;
+            font-size: 0.85rem;
+            margin: 0.4rem 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #374151;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(to right, #22ff44, #ffaa00, #ff4444);
+            transition: width 0.3s;
+        }
+        
+        .explanation {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        
+        .explanation h3 {
+            color: #fbbf24;
+            margin-bottom: 0.75rem;
+        }
+        
+        .step {
+            background: #111827;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 0.5rem 0;
+            border-left: 4px solid #22c55e;
+        }
+        
+        .step-title {
+            color: #22c55e;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Understanding Photon Survival Probability</h1>
+            
+            <div class="equation-display">
+                <div class="equation-main">
+                    P[<span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>, 
+                    |<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span> - 
+                    <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub>|] = 
+                    exp[-∫<sub>0</sub><sup>|<span style="position: relative; font-size: 0.8em;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span>-<span style="position: relative; font-size: 0.8em;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub style="font-size: 0.7em;">B</sub>|</sup> ds' σ(<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span> - s'<span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>, 
+                    <span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>)]
+                </div>
+                
+                <div class="equation-parts">
+                    <div class="part">
+                        <div class="part-label">P[<span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>, |<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span> - <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub>|]</div>
+                        <div class="part-description">
+                            <strong>Survival Probability:</strong> The probability that a photon traveling in direction <span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span> 
+                            survives (is NOT absorbed) over the distance from <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub> to <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="part">
+                        <div class="part-label">|<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span> - <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub>|</div>
+                        <div class="part-description">
+                            <strong>Path Length:</strong> The total distance the photon travels from the boundary point 
+                            <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub> (where it enters) to the current point <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="part">
+                        <div class="part-label">σ(<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span> - s'<span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>, <span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>)</div>
+                        <div class="part-description">
+                            <strong>Absorption Coefficient:</strong> How strongly the medium absorbs photons at each point 
+                            along the path. Can vary with position and direction.
+                        </div>
+                    </div>
+                    
+                    <div class="part">
+                        <div class="part-label">∫<sub>0</sub><sup>|<span style="position: relative; font-size: 0.9em;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span>-<span style="position: relative; font-size: 0.9em;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub style="font-size: 0.8em;">B</sub>|</sup> ds' σ</div>
+                        <div class="part-description">
+                            <strong>Optical Depth (τ):</strong> The accumulated absorption along the entire path. 
+                            Sum up all the little absorptions (σ × ds) along the way.
+                        </div>
+                    </div>
+                    
+                    <div class="part">
+                        <div class="part-label">exp(-τ)</div>
+                        <div class="part-description">
+                            <strong>Exponential Decay:</strong> The survival probability decreases exponentially with optical depth. 
+                            More absorption → smaller probability of survival.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div class="control-label">
+                    <span>Absorption σ:</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="range" id="sigmaSlider" min="1" max="100" value="20">
+                        <span class="value" id="sigmaValue">0.20</span>
+                    </div>
+                </div>
+                <div class="control-label">
+                    <span>Animation Speed:</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="range" id="speedSlider" min="1" max="10" value="5">
+                        <span class="value" id="speedValue">5x</span>
+                    </div>
+                </div>
+                <button id="resetBtn" class="btn">Reset Animation</button>
+            </div>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="canvas3d"></canvas>
+            <div class="info-panel">
+                <h4>Current Photon Status:</h4>
+                <div class="info-item">
+                    Distance |<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span>-<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub>|: <span style="color: #60a5fa;" id="distanceTraveled">0.00</span>
+                </div>
+                <div class="info-item">
+                    Optical depth τ: <span style="color: #ffaa00;" id="opticalDepth">0.00</span>
+                </div>
+                <div class="info-item">
+                    Survival prob P: <span style="color: #22ff44;" id="survivalProb">100%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 100%;"></div>
+                </div>
+                <div class="info-item" style="margin-top: 1rem; color: #9ca3af; font-size: 0.8rem;">
+                    P = exp(-τ) = exp(-<span id="tauValue">0.00</span>)
+                </div>
+            </div>
+        </div>
+        
+        <div class="explanation">
+            <h3>🎓 Step-by-Step Explanation:</h3>
+            
+            <div class="step">
+                <div class="step-title">Step 1: Photon starts at boundary (<span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub>)</div>
+                <p>
+                    The photon (green sphere) enters the medium at point <span style="position: relative;">r<span style="position: absolute; top: -0.8em; left: 0; font-size: 0.6em;">→</span></span><sub>B</sub> (orange sphere at top) traveling downward in direction <span style="position: relative;">Ω<span style="position: absolute; top: -0.8em; left: 0.05em; font-size: 0.6em;">→</span></span>. 
+                    At this moment: P = 100%, τ = 0, distance = 0.
+                </p>
+            </div>
+            
+            <div class="step">
+                <div class="step-title">Step 2: Photon travels through absorbing medium</div>
+                <p>
+                    As it moves, the photon encounters white particles (host material). At each tiny step ds', there's a chance 
+                    of absorption determined by σ. The photon's path is shown as a green trail.
+                </p>
+            </div>
+            
+            <div class="step">
+                <div class="step-title">Step 3: Accumulate optical depth</div>
+                <p>
+                    The integral ∫ σ ds' adds up all absorption along the path. This gives optical depth τ. 
+                    Watch the τ value increase as the photon travels! Each segment contributes σ × ds' to the total.
+                </p>
+            </div>
+            
+            <div class="step">
+                <div class="step-title">Step 4: Probability decreases exponentially</div>
+                <p>
+                    The survival probability P = exp(-τ) decreases as τ grows. Notice how the photon becomes more transparent 
+                    and changes color from green → yellow → red as P drops. The progress bar shows this visually!
+                </p>
+            </div>
+            
+            <div class="step">
+                <div class="step-title">Step 5: Physical interpretation</div>
+                <p>
+                    <strong>Large σ:</strong> Strong absorption → τ increases fast → P drops quickly → photon likely absorbed<br>
+                    <strong>Small σ:</strong> Weak absorption → τ increases slowly → P stays high → photon likely survives<br><br>
+                    Try adjusting the σ slider to see the effect! The formula captures this entire physical process.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(
+            65,
+            canvas.parentElement.clientWidth / canvas.parentElement.clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(8, 6, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        directionalLight.position.set(10, 15, 10);
+        scene.add(directionalLight);
+
+        // Medium (box)
+        const mediumHeight = 8;
+        const mediumGeometry = new THREE.BoxGeometry(6, mediumHeight, 6);
+        const mediumMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffdd00,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.5
+        });
+        const medium = new THREE.Mesh(mediumGeometry, mediumMaterial);
+        scene.add(medium);
+
+        // Host particles
+        const hostParticles = [];
+        for (let i = 0; i < 60; i++) {
+            const x = (Math.random() - 0.5) * 5;
+            const y = (Math.random() - 0.5) * 7;
+            const z = (Math.random() - 0.5) * 5;
+            
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 8, 8),
+                new THREE.MeshPhongMaterial({ color: 0xffffff })
+            );
+            particle.position.set(x, y, z);
+            scene.add(particle);
+            hostParticles.push(particle);
+        }
+
+        // Boundary point r_B
+        const rB = new THREE.Vector3(0, mediumHeight/2, 0);
+        const boundaryPoint = new THREE.Mesh(
+            new THREE.SphereGeometry(0.3, 20, 20),
+            new THREE.MeshPhongMaterial({
+                color: 0xff6b35,
+                emissive: 0xff6b35,
+                emissiveIntensity: 0.5
+            })
+        );
+        boundaryPoint.position.copy(rB);
+        scene.add(boundaryPoint);
+
+        // Direction arrow
+        const directionArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(0, -1, 0),
+            rB,
+            3,
+            0xff1744,
+            0.5,
+            0.3
+        );
+        scene.add(directionArrow);
+
+        // Labels with vector arrows
+        function createLabel(text, color) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+            context.font = 'Bold 60px Arial';
+            context.fillStyle = color;
+            context.textAlign = 'center';
+            context.fillText(text, 256, 128);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true
+            }));
+            sprite.scale.set(2, 1, 1);
+            return sprite;
+        }
+
+        function createLabelWithArrow(baseText, hasArrow, color) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+            context.font = 'Bold 60px Arial';
+            context.fillStyle = color;
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            
+            // Draw main text
+            context.fillText(baseText, 256, 140);
+            
+            // Draw arrow if needed
+            if (hasArrow) {
+                context.font = 'Bold 40px Arial';
+                const metrics = context.measureText(baseText);
+                const textWidth = metrics.width;
+                const arrowX = 256 + textWidth/4;
+                const arrowY = 100;
+                context.fillText('→', arrowX, arrowY);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true
+            }));
+            sprite.scale.set(2, 1, 1);
+            return sprite;
+        }
+
+        const rBLabel = createLabel('r→B (Start)', '#ff6b35');
+        rBLabel.position.set(0, mediumHeight/2 + 1.5, 0);
+        scene.add(rBLabel);
+
+        const omegaLabel = createLabel('Ω→', '#ff1744');
+        omegaLabel.position.set(1.5, mediumHeight/2 - 1, 0);
+        scene.add(omegaLabel);
+
+        // Animated photon
+        let sigma = 0.2;
+        let animationSpeed = 5;
+        
+        const photon = new THREE.Mesh(
+            new THREE.SphereGeometry(0.15, 16, 16),
+            new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 1
+            })
+        );
+        scene.add(photon);
+
+        // Photon trail
+        const trailPoints = [];
+        const maxTrailPoints = 50;
+        let trailGeometry = new THREE.BufferGeometry();
+        let trailMaterial = new THREE.LineBasicMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.6
+        });
+        let trail = new THREE.Line(trailGeometry, trailMaterial);
+        scene.add(trail);
+
+        // Animation state
+        let t = 0;
+        let maxT = mediumHeight;
+
+        // Controls
+        const sigmaSlider = document.getElementById('sigmaSlider');
+        const sigmaValue = document.getElementById('sigmaValue');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const resetBtn = document.getElementById('resetBtn');
+
+        sigmaSlider.addEventListener('input', (e) => {
+            sigma = e.target.value / 100;
+            sigmaValue.textContent = sigma.toFixed(2);
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            animationSpeed = parseInt(e.target.value);
+            speedValue.textContent = animationSpeed + 'x';
+        });
+
+        resetBtn.addEventListener('click', () => {
+            t = 0;
+            trailPoints.length = 0;
+        });
+
+        // Target point r
+        const rMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.25, 20, 20),
+            new THREE.MeshPhongMaterial({
+                color: 0xa855f7,
+                emissive: 0xa855f7,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0
+            })
+        );
+        scene.add(rMarker);
+
+        const rLabel = createLabel('r→ (Current)', '#a855f7');
+        rLabel.visible = false;
+        scene.add(rLabel);
+
+        function updatePhoton() {
+            // Update position
+            t += 0.02 * animationSpeed;
+            if (t > maxT) {
+                t = 0;
+                trailPoints.length = 0;
+            }
+            
+            const currentY = rB.y - t;
+            photon.position.set(0, currentY, 0);
+            
+            // Update r marker
+            if (t > 0.5) {
+                rMarker.position.copy(photon.position);
+                rMarker.material.opacity = 0.6;
+                rLabel.position.set(photon.position.x + 1.5, photon.position.y, photon.position.z);
+                rLabel.visible = true;
+            } else {
+                rMarker.material.opacity = 0;
+                rLabel.visible = false;
+            }
+            
+            // Add to trail
+            trailPoints.push(photon.position.clone());
+            if (trailPoints.length > maxTrailPoints) {
+                trailPoints.shift();
+            }
+            
+            // Update trail
+            if (trailPoints.length > 1) {
+                trailGeometry.setFromPoints(trailPoints);
+            }
+            
+            // Calculate survival probability
+            const distance = t;
+            const tau = sigma * distance;
+            const probability = Math.exp(-tau);
+            
+            // Update photon appearance
+            photon.material.opacity = Math.max(0.3, probability);
+            const color = probability > 0.5 ? 0x00ff00 : (probability > 0.2 ? 0xffaa00 : 0xff4444);
+            photon.material.color.setHex(color);
+            trailMaterial.color.setHex(color);
+            
+            // Update info panel
+            document.getElementById('distanceTraveled').textContent = distance.toFixed(2);
+            document.getElementById('opticalDepth').textContent = tau.toFixed(2);
+            document.getElementById('survivalProb').textContent = Math.round(probability * 100) + '%';
+            document.getElementById('progressFill').style.width = (probability * 100) + '%';
+            document.getElementById('tauValue').textContent = tau.toFixed(2);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            updatePhoton();
+            
+            // Labels face camera
+            rBLabel.lookAt(camera.position);
+            rLabel.lookAt(camera.position);
+            omegaLabel.lookAt(camera.position);
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = canvas.parentElement.clientWidth / canvas.parentElement.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+        });
+    </script>
+</body>
+</html>

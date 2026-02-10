@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiative Transfer in Vacuum - 3D Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(to bottom, #1a1a1a, #2d2d2d);
+            color: #fff;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .subtitle {
+            color: #d1d5db;
+            font-size: 1.125rem;
+            margin-bottom: 1rem;
+        }
+        
+        .equations {
+            background: #111827;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #374151;
+            margin-bottom: 1rem;
+        }
+        
+        .equation-block {
+            margin-bottom: 1rem;
+        }
+        
+        .equation-block:last-child {
+            margin-bottom: 0;
+        }
+        
+        .equation-label {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            font-size: 0.875rem;
+        }
+        
+        .equation-label.blue { color: #60a5fa; }
+        .equation-label.orange { color: #fb923c; }
+        .equation-label.green { color: #4ade80; }
+        
+        .equation-text {
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            margin: 0.25rem 0;
+        }
+        
+        .equation-note {
+            color: #9ca3af;
+            font-style: italic;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .control-item:hover {
+            color: #fff;
+        }
+        
+        .control-item input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+        }
+        
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .canvas-container {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            flex: 1;
+            min-height: 500px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        
+        #canvas3d {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .legend {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        .legend h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.125rem;
+        }
+        
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            font-size: 0.875rem;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #d1d5db;
+        }
+        
+        .legend-color {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        
+        .legend-note {
+            color: #9ca3af;
+            font-style: italic;
+            font-size: 0.75rem;
+            margin-top: 0.75rem;
+        }
+        
+        .intensity-display {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 2px solid #fbbf24;
+            min-width: 200px;
+        }
+        
+        .intensity-display h4 {
+            color: #fbbf24;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .intensity-value {
+            color: #fde047;
+            font-family: 'Courier New', monospace;
+            font-size: 1.125rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+        
+        .intensity-note {
+            color: #d1d5db;
+            font-size: 0.75rem;
+            font-style: italic;
+        }
+        
+        @media (max-width: 768px) {
+            h1 { font-size: 1.5rem; }
+            .subtitle { font-size: 1rem; }
+            .controls { flex-direction: column; gap: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Radiative Transfer in Vacuum</h1>
+            <p class="subtitle">The simplest RT problem: medium devoid of any material</p>
+            
+            <div class="equations">
+                <div class="equation-block">
+                    <div class="equation-label blue">Governing Equation:</div>
+                    <div class="equation-text" style="font-size: 1.1rem;">
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span> · ∇I = dI(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span>+s
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>,
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>)/ds = 0
+                    </div>
+                    <div class="equation-note">Radiance is constant along rays in vacuum</div>
+                </div>
+                
+                <div class="equation-block">
+                    <div class="equation-label orange">Boundary Condition:</div>
+                    <div class="equation-text" style="font-size: 1.1rem;">
+                        I(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span>,
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>) = B(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>,
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>)
+                    </div>
+                    <div class="equation-note">
+                        where 
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub> ∈ δV and [
+                        <span style="position: relative; display: inline-block;">
+                            n<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>) · 
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>] &lt; 0
+                    </div>
+                    <div class="equation-note">Incoming rays: normal and direction form obtuse angle</div>
+                </div>
+                
+                <div class="equation-block">
+                    <div class="equation-label green">Solution:</div>
+                    <div class="equation-text" style="font-size: 1.1rem;">
+                        I(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span>,
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>) = B(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>,
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>)
+                    </div>
+                    <div class="equation-note">Radiance equals boundary value everywhere along the ray</div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <label class="control-item">
+                    <input type="checkbox" id="showBoundary" checked>
+                    <span>Show Volume Boundary (δV)</span>
+                </label>
+                <label class="control-item">
+                    <input type="checkbox" id="showLabels" checked>
+                    <span>Show Labels</span>
+                </label>
+                <button id="toggleAnimation" class="btn btn-primary">Pause Animation</button>
+            </div>
+        </div>
+        
+        <!-- 3D Canvas -->
+        <div class="canvas-container">
+            <canvas id="canvas3d"></canvas>
+            <div class="intensity-display">
+                <h4>BOUNDARY INTENSITY:</h4>
+                <div class="intensity-value">
+                    I = B(
+                    <span style="position: relative; display: inline-block;">
+                        r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                    </span><sub>B</sub>, 
+                    <span style="position: relative; display: inline-block;">
+                        Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                    </span>)
+                </div>
+                <div class="intensity-note">
+                    At boundary point 
+                    <span style="position: relative; display: inline-block;">
+                        r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                    </span><sub>B</sub>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <h3>Visual Elements:</h3>
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #3b82f6; border: 1px solid #60a5fa;"></div>
+                    <span><strong>δV:</strong> Volume boundary</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b35;"></div>
+                    <span><strong>
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>:
+                    </strong> Boundary entry point</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #dc2626;"></div>
+                    <span><strong>
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>:
+                    </strong> Ray direction (incoming)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #22c55e;"></div>
+                    <span><strong>
+                        <span style="position: relative; display: inline-block;">
+                            n<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>:
+                    </strong> Outward surface normal</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #eab308;"></div>
+                    <span><strong>Yellow dots:</strong> I = B(
+                        <span style="position: relative; display: inline-block;">
+                            r<span style="position: absolute; top: -0.6em; left: 0; font-size: 0.5em;">→</span>
+                        </span><sub>B</sub>, 
+                        <span style="position: relative; display: inline-block;">
+                            Ω<span style="position: absolute; top: -0.6em; left: 0.1em; font-size: 0.5em;">→</span>
+                        </span>)
+                    </span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #facc15; border: 1px solid #fde047;"></div>
+                    <span>Same intensity everywhere!</span>
+                </div>
+            </div>
+            <div class="legend-note">
+                The visualization rotates automatically. Yellow dots pulse to show that radiance remains constant at all points along the ray path through the vacuum.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Scene setup
+        const canvas = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        
+        const camera = new THREE.PerspectiveCamera(
+            50,
+            canvas.parentElement.clientWidth / canvas.parentElement.clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(7, 5, 7);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        directionalLight.position.set(8, 10, 6);
+        scene.add(directionalLight);
+
+        // Volume boundary (δV)
+        const volumeGeometry = new THREE.SphereGeometry(2.8, 32, 32);
+        const volumeMaterial = new THREE.MeshPhongMaterial({
+            color: 0x2196f3,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.DoubleSide
+        });
+        const volume = new THREE.Mesh(volumeGeometry, volumeMaterial);
+        scene.add(volume);
+
+        // Boundary wireframe
+        const wireframeGeo = new THREE.EdgesGeometry(volumeGeometry);
+        const wireframeMat = new THREE.LineBasicMaterial({ 
+            color: 0x42a5f5, 
+            transparent: true,
+            opacity: 0.6
+        });
+        const volumeWireframe = new THREE.LineSegments(wireframeGeo, wireframeMat);
+        scene.add(volumeWireframe);
+
+        // Boundary point r_B
+        const boundaryPoint = new THREE.Vector3(2.0, 1.5, 1.8).normalize().multiplyScalar(2.8);
+        const pointGeometry = new THREE.SphereGeometry(0.18, 20, 20);
+        const rBMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xff6b35,
+            emissive: 0xff6b35,
+            emissiveIntensity: 0.3
+        });
+        const rBPoint = new THREE.Mesh(pointGeometry, rBMaterial);
+        rBPoint.position.copy(boundaryPoint);
+        scene.add(rBPoint);
+
+        // Ray direction Ω
+        const direction = new THREE.Vector3(-0.65, -0.45, -0.55).normalize();
+        const arrowHelper = new THREE.ArrowHelper(
+            direction,
+            boundaryPoint,
+            4.0,
+            0xff1744,
+            0.5,
+            0.35
+        );
+        scene.add(arrowHelper);
+
+        // Ray path through vacuum
+        const rayPoints = [];
+        const numPoints = 40;
+        for (let i = 0; i <= numPoints; i++) {
+            const s = (i / numPoints) * 3.5;
+            const point = boundaryPoint.clone().add(direction.clone().multiplyScalar(s));
+            rayPoints.push(point);
+        }
+        const rayGeometry = new THREE.BufferGeometry().setFromPoints(rayPoints);
+        const rayMaterial = new THREE.LineBasicMaterial({ 
+            color: 0xff4444, 
+            transparent: true,
+            opacity: 0.8
+        });
+        const rayLine = new THREE.Line(rayGeometry, rayMaterial);
+        scene.add(rayLine);
+
+        // Points along ray showing constant I_λ
+        const pointsAlongRay = [];
+        const sValues = [0.8, 1.6, 2.4, 3.2];
+        for (let s of sValues) {
+            const pt = boundaryPoint.clone().add(direction.clone().multiplyScalar(s));
+            const marker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.12, 16, 16),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0xffd700,
+                    emissive: 0xffd700,
+                    emissiveIntensity: 0.2
+                })
+            );
+            marker.position.copy(pt);
+            scene.add(marker);
+            pointsAlongRay.push(marker);
+        }
+
+        // Surface normal at boundary
+        const normal = boundaryPoint.clone().normalize();
+        const normalArrow = new THREE.ArrowHelper(
+            normal,
+            boundaryPoint,
+            1.5,
+            0x4caf50,
+            0.4,
+            0.3
+        );
+        scene.add(normalArrow);
+
+        // Create text sprites for labels with vector arrows drawn on top
+        function createTextSprite(text, color = '#ffffff', size = 0.8, hasArrow = false, arrowPositions = [], hasSubscript = false, subscriptInfo = []) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 256;
+            
+            context.fillStyle = color;
+            context.textAlign = 'left';
+            context.textBaseline = 'middle';
+            
+            let arrowTargets = []; // Store actual positions where arrows should be drawn
+            
+            // If has subscript info, handle custom rendering
+            if (hasSubscript && subscriptInfo.length > 0) {
+                // Custom rendering for complex expressions like "B(r_B, Ω)"
+                let currentX = 180; // Start position
+                const mainY = 128;
+                const subY = 148; // Subscript Y position
+                let charIndex = 0;
+                
+                subscriptInfo.forEach(part => {
+                    if (part.type === 'main') {
+                        context.font = 'Bold 80px Arial';
+                        // Track if this character should have an arrow
+                        for (let i = 0; i < part.text.length; i++) {
+                            const char = part.text[i];
+                            const charWidth = context.measureText(char).width;
+                            
+                            // Check if this character needs an arrow (r, n, Ω)
+                            if (part.needsArrow && part.needsArrow.includes(i)) {
+                                arrowTargets.push({x: currentX + charWidth/2, y: mainY});
+                            }
+                            
+                            context.fillText(char, currentX, mainY);
+                            currentX += charWidth;
+                        }
+                    } else if (part.type === 'subscript') {
+                        context.font = 'Bold 50px Arial';
+                        context.fillText(part.text, currentX, subY);
+                        currentX += context.measureText(part.text).width;
+                    }
+                });
+            } else {
+                // Simple text rendering
+                context.font = 'Bold 80px Arial';
+                const textWidth = context.measureText(text).width;
+                const startX = (512 - textWidth) / 2;
+                
+                for (let i = 0; i < text.length; i++) {
+                    const char = text[i];
+                    const charWidth = context.measureText(char).width;
+                    context.fillText(char, startX + i * charWidth, 128);
+                }
+                
+                // Use provided arrow positions
+                arrowTargets = arrowPositions;
+            }
+            
+            // Draw arrows on top of characters
+            if (hasArrow && arrowTargets.length > 0) {
+                context.strokeStyle = color;
+                context.fillStyle = color;
+                context.lineWidth = 4;
+                
+                arrowTargets.forEach(pos => {
+                    // Arrow positioned above the character
+                    const startX = pos.x - 15;
+                    const startY = pos.y - 40;
+                    const endX = startX + 30;
+                    const endY = startY;
+                    
+                    // Draw arrow line
+                    context.beginPath();
+                    context.moveTo(startX, startY);
+                    context.lineTo(endX, endY);
+                    context.stroke();
+                    
+                    // Draw arrow head
+                    context.beginPath();
+                    context.moveTo(endX, endY);
+                    context.lineTo(endX - 6, endY - 5);
+                    context.lineTo(endX - 6, endY + 5);
+                    context.closePath();
+                    context.fill();
+                });
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(size * 2, size, 1);
+            return sprite;
+        }
+
+        const labels = [];
+        
+        // r with arrow on top, then subscript B
+        const rBLabel = createTextSprite('', '#ff6b35', 0.8, true, [], true, [
+            {type: 'main', text: 'r', needsArrow: [0]},
+            {type: 'subscript', text: 'B'}
+        ]);
+        rBLabel.position.copy(boundaryPoint).add(new THREE.Vector3(0.7, 0.6, 0));
+        labels.push(rBLabel);
+        scene.add(rBLabel);
+
+        // Omega with arrow on top
+        const omegaLabel = createTextSprite('Ω', '#ff1744', 0.9, true, [{x: 256, y: 128}], false, []);
+        omegaLabel.position.copy(boundaryPoint).add(direction.clone().multiplyScalar(2.2)).add(new THREE.Vector3(0, 0.4, 0));
+        labels.push(omegaLabel);
+        scene.add(omegaLabel);
+
+        // n with arrow on top, then subscript B
+        const normalLabel = createTextSprite('', '#4caf50', 0.8, true, [], true, [
+            {type: 'main', text: 'n', needsArrow: [0]},
+            {type: 'subscript', text: 'B'}
+        ]);
+        normalLabel.position.copy(boundaryPoint).add(normal.clone().multiplyScalar(1.9));
+        labels.push(normalLabel);
+        scene.add(normalLabel);
+
+        // B(r_B, Ω) with arrows on r and Ω, and B as subscript
+        const boundaryIntensityLabel = createTextSprite('', '#ffd700', 1.2, true, [], true, [
+            {type: 'main', text: 'B(', needsArrow: []},
+            {type: 'main', text: 'r', needsArrow: [0]},
+            {type: 'subscript', text: 'B'},
+            {type: 'main', text: ', ', needsArrow: []},
+            {type: 'main', text: 'Ω', needsArrow: [0]},
+            {type: 'main', text: ')', needsArrow: []}
+        ]);
+        boundaryIntensityLabel.position.copy(boundaryPoint).add(new THREE.Vector3(-0.2, -0.8, 0));
+        labels.push(boundaryIntensityLabel);
+        scene.add(boundaryIntensityLabel);
+
+        const boundaryLabel = createTextSprite('δV', '#42a5f5', 1.0, false, [], false, []);
+        boundaryLabel.position.set(-3.5, 0, 0);
+        labels.push(boundaryLabel);
+        scene.add(boundaryLabel);
+        
+        // Remove the extra intensity labels at points - only show at boundary
+        const pointLabels = [];
+
+        // Controls
+        const showBoundaryCheckbox = document.getElementById('showBoundary');
+        const showLabelsCheckbox = document.getElementById('showLabels');
+        const toggleAnimationBtn = document.getElementById('toggleAnimation');
+        
+        let isAnimating = true;
+        
+        toggleAnimationBtn.addEventListener('click', () => {
+            isAnimating = !isAnimating;
+            toggleAnimationBtn.textContent = isAnimating ? 'Pause Animation' : 'Resume Animation';
+            toggleAnimationBtn.className = isAnimating ? 'btn btn-primary' : 'btn btn-secondary';
+        });
+
+        // Animation
+        let angle = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (isAnimating) {
+                angle += 0.004;
+                camera.position.x = 7 * Math.cos(angle);
+                camera.position.z = 7 * Math.sin(angle);
+                camera.lookAt(0, 0, 0);
+            }
+            
+            // Control visibility
+            volume.visible = showBoundaryCheckbox.checked;
+            volumeWireframe.visible = showBoundaryCheckbox.checked;
+            
+            labels.forEach(label => {
+                label.visible = showLabelsCheckbox.checked;
+            });
+            
+            // Pulse effect on points along ray to emphasize constant intensity
+            const pulse = Math.sin(Date.now() * 0.002) * 0.3 + 0.7;
+            pointsAlongRay.forEach(pt => {
+                pt.material.emissiveIntensity = pulse * 0.3;
+            });
+            
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const width = canvas.parentElement.clientWidth;
+            const height = canvas.parentElement.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+    </script>
+</body>
+</html>
