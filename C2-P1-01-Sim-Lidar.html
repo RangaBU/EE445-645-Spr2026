@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D LiDAR Broadleaf Forest — LAI Constrained</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Outfit:wght@300;400;600&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Outfit', sans-serif; color: #fff; cursor: grab; }
+  body:active { cursor: grabbing; }
+  canvas { display: block; }
+
+  #hud { position: fixed; top: 24px; left: 24px; z-index: 10; pointer-events: none; }
+  #hud h1 {
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600;
+    letter-spacing: 3px; text-transform: uppercase; color: #00ffc8;
+    margin-bottom: 6px; text-shadow: 0 0 20px rgba(0,255,200,0.4);
+  }
+  #hud p { font-size: 12px; font-weight: 300; color: rgba(255,255,255,0.5); letter-spacing: 0.5px; }
+
+  #controls {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; gap: 10px; align-items: center; pointer-events: auto; flex-wrap: wrap; justify-content: center;
+  }
+  .ctrl-btn {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.7); font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 1px; padding: 8px 16px; border-radius: 4px;
+    cursor: pointer; transition: all 0.3s; backdrop-filter: blur(10px);
+  }
+  .ctrl-btn:hover { background: rgba(0,255,200,0.1); border-color: rgba(0,255,200,0.4); color: #00ffc8; }
+  .ctrl-btn.active { background: rgba(0,255,200,0.15); border-color: #00ffc8; color: #00ffc8; }
+
+  #stats {
+    position: fixed; top: 24px; right: 24px; z-index: 10; text-align: right;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.35); pointer-events: none;
+    line-height: 1.8;
+  }
+  #stats span { color: rgba(0,255,200,0.6); }
+  #stats .warn { color: #ff6644; }
+
+  #loading {
+    position: fixed; inset: 0; background: #000; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100; transition: opacity 0.8s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading h2 {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 4px; color: #00ffc8; margin-bottom: 20px;
+  }
+  .loader { width: 280px; height: 2px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+  .loader-bar { height: 100%; background: linear-gradient(90deg, #00ffc8, #ff4444); width: 0%; transition: width 0.15s; border-radius: 2px; }
+
+  #instructions {
+    position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: rgba(255,255,255,0.25); font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.5px; white-space: nowrap; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <h2>GENERATING BROADLEAF FOREST</h2>
+  <div class="loader"><div class="loader-bar" id="loaderBar"></div></div>
+</div>
+
+<div id="hud">
+  <h1>Broadleaf Forest LiDAR</h1>
+  <p>Dense Deciduous Stand · 3D Point Cloud · LAI-Constrained Canopy</p>
+</div>
+
+<div id="stats">
+  Total Points: <span id="pointCount">—</span><br>
+  Leaf Points: <span id="leafPoints">—</span><br>
+  Trees: <span id="treeCount">—</span><br>
+  Ground Area: <span id="groundArea">—</span> m²<br>
+  Leaf Area (each): <span id="leafSize">—</span> m²<br>
+  <strong>LAI: <span id="laiValue">—</span></strong><br>
+  Stem Density: <span id="stemDensity">—</span> trees/ha<br>
+  FPS: <span id="fps">0</span>
+</div>
+
+<div id="instructions">Drag to rotate · Scroll to zoom · Right-drag to pan</div>
+
+<div id="controls">
+  <button class="ctrl-btn active" id="btn-height" onclick="setColorMode('height')">Height Map</button>
+  <button class="ctrl-btn" id="btn-intensity" onclick="setColorMode('intensity')">Intensity</button>
+  <button class="ctrl-btn" id="btn-class" onclick="setColorMode('classification')">Classification</button>
+  <button class="ctrl-btn" id="btn-lai" onclick="setColorMode('lai')">LAI Heatmap</button>
+  <button class="ctrl-btn" id="btn-rotate" onclick="toggleAutoRotate()">Auto-Rotate</button>
+  <button class="ctrl-btn" onclick="resetCamera()">Reset View</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ==================== CONFIG ====================
+const WORLD_X = 120;  // meters
+const WORLD_Z = 60;   // meters
+const GROUND_AREA = WORLD_X * WORLD_Z; // 7200 m²
+
+// LAI parameters
+// Each point = one leaf with this one-sided area
+// We want LAI = totalLeafPoints * LEAF_AREA / GROUND_AREA  in [3, 5]
+// Target LAI = 4.0 => totalLeafPoints = 4.0 * 7200 / LEAF_AREA
+// With LEAF_AREA = 0.004 m²: need 7,200,000 leaves — too many points
+// So we use a larger representative leaf area: each point represents a leaf cluster
+const LEAF_AREA = 0.01;  // m² per point (one-sided)
+const TARGET_LAI = 4.0;
+const TARGET_LEAF_POINTS = Math.round(TARGET_LAI * GROUND_AREA / LEAF_AREA);
+// = 4.0 * 7200 / 0.01 = 2,880,000 — still huge, let's use bigger leaf area
+// Actually let's be practical for WebGL performance:
+// Use LEAF_AREA such that we get ~600k-800k leaf points
+// LAI 4 * 7200 m² = 28800 m² total leaf area
+// 700000 points => LEAF_AREA = 28800/700000 = 0.0411 m² per point
+// That's a ~20cm × 20cm leaf cluster per point — reasonable for LiDAR
+
+const PRACTICAL_LEAF_TARGET = 700000;
+const ACTUAL_LEAF_AREA = (TARGET_LAI * GROUND_AREA) / PRACTICAL_LEAF_TARGET;
+// ~0.041 m² per point
+
+// ==================== SCENE ====================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.FogExp2(0x000000, 0.0012);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// ==================== CAMERA CONTROLS ====================
+let isDragging = false, isRightDrag = false, prevMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.4, phi: Math.PI / 3.2, radius: 120 };
+let target = new THREE.Vector3(0, 16, 0);
+let autoRotate = false;
+
+function updateCamera() {
+  camera.position.set(
+    target.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta),
+    target.y + spherical.radius * Math.cos(spherical.phi),
+    target.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta)
+  );
+  camera.lookAt(target);
+}
+
+// Prevent controls from triggering camera drag
+document.getElementById('controls').addEventListener('mousedown', e => e.stopPropagation());
+document.getElementById('controls').addEventListener('touchstart', e => e.stopPropagation());
+
+window.addEventListener('mousedown', e => {
+  if (e.target !== renderer.domElement) return;
+  isDragging = true; isRightDrag = e.button === 2; prevMouse = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+  if (isRightDrag) {
+    const r = new THREE.Vector3(); r.crossVectors(camera.getWorldDirection(new THREE.Vector3()), new THREE.Vector3(0,1,0)).normalize();
+    target.addScaledVector(r, -dx * 0.08); target.y += dy * 0.08;
+  } else {
+    spherical.theta -= dx * 0.004;
+    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.004));
+  }
+  prevMouse = { x: e.clientX, y: e.clientY }; updateCamera();
+});
+window.addEventListener('mouseup', () => isDragging = false);
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+renderer.domElement.addEventListener('wheel', e => { spherical.radius = Math.max(10, Math.min(350, spherical.radius + e.deltaY * 0.08)); updateCamera(); });
+
+let lastTouchDist = 0;
+window.addEventListener('touchstart', e => {
+  if (e.target !== renderer.domElement) return;
+  if (e.touches.length === 1) { isDragging = true; prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+  else if (e.touches.length === 2) lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+});
+window.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - prevMouse.x, dy = e.touches[0].clientY - prevMouse.y;
+    spherical.theta -= dx * 0.005; spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; updateCamera();
+  } else if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    spherical.radius = Math.max(10, Math.min(350, spherical.radius - (d - lastTouchDist) * 0.15)); lastTouchDist = d; updateCamera();
+  }
+}, { passive: false });
+window.addEventListener('touchend', () => isDragging = false);
+renderer.domElement.addEventListener('touchend', () => isDragging = false);
+
+// ==================== SEEDED RNG ====================
+function mulberry32(a) {
+  return function() { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+}
+const rng = mulberry32(314159);
+
+// ==================== BROADLEAF SPECIES ====================
+const SPECIES = [
+  { name: 'Oak',      minH: 22, maxH: 38, crownShape: 'round',    crownSpread: [6, 10], trunkR: [0.3, 0.6],  canopyBase: [0.45, 0.55], leafDensity: 1.0 },
+  { name: 'Maple',    minH: 18, maxH: 30, crownShape: 'round',    crownSpread: [5, 8],  trunkR: [0.25, 0.45], canopyBase: [0.4, 0.55],  leafDensity: 1.05 },
+  { name: 'Beech',    minH: 25, maxH: 40, crownShape: 'columnar', crownSpread: [5, 9],  trunkR: [0.3, 0.55], canopyBase: [0.4, 0.5],   leafDensity: 0.95 },
+  { name: 'Birch',    minH: 14, maxH: 24, crownShape: 'oval',     crownSpread: [3, 6],  trunkR: [0.12, 0.25], canopyBase: [0.35, 0.5],  leafDensity: 0.7 },
+  { name: 'Ash',      minH: 20, maxH: 35, crownShape: 'round',    crownSpread: [5, 9],  trunkR: [0.25, 0.5], canopyBase: [0.45, 0.6],  leafDensity: 0.85 },
+  { name: 'Hickory',  minH: 20, maxH: 32, crownShape: 'oval',     crownSpread: [4, 7],  trunkR: [0.2, 0.4],  canopyBase: [0.5, 0.6],   leafDensity: 0.9 },
+  { name: 'Elm',      minH: 18, maxH: 30, crownShape: 'vase',     crownSpread: [6, 10], trunkR: [0.3, 0.55], canopyBase: [0.35, 0.5],  leafDensity: 1.0 },
+  { name: 'Poplar',   minH: 20, maxH: 35, crownShape: 'columnar', crownSpread: [3, 5],  trunkR: [0.2, 0.4],  canopyBase: [0.3, 0.45],  leafDensity: 0.8 },
+  { name: 'Linden',   minH: 18, maxH: 30, crownShape: 'round',    crownSpread: [5, 8],  trunkR: [0.25, 0.45], canopyBase: [0.35, 0.5],  leafDensity: 1.1 },
+  { name: 'Walnut',   minH: 16, maxH: 28, crownShape: 'round',    crownSpread: [5, 9],  trunkR: [0.25, 0.5], canopyBase: [0.4, 0.55],  leafDensity: 0.85 },
+];
+
+// ==================== TERRAIN ====================
+function terrainY(x, z) {
+  return Math.sin(x * 0.025) * 1.5 + Math.cos(z * 0.04) * 1.0 + Math.sin((x + z) * 0.015) * 0.8;
+}
+
+// ==================== FOREST GENERATION ====================
+function generateForest() {
+  const loaderBar = document.getElementById('loaderBar');
+  const pos = [];  // flat x,y,z
+  const meta = []; // 0=ground, 1=trunk/branch, 2=canopy leaf, 3=understory leaf, 4=deadwood
+
+  // --- Place trees densely ---
+  // Target: ~600-800 stems/hectare (dense broadleaf forest)
+  // 7200 m² = 0.72 ha => ~430-575 trees
+  const targetTreesPerHa = 700;
+  const targetTrees = Math.round(targetTreesPerHa * GROUND_AREA / 10000);
+  const trees = [];
+  const minDist = 2.5; // meters — tight but realistic for dense stand
+
+  let attempts = 0;
+  while (trees.length < targetTrees && attempts < targetTrees * 15) {
+    attempts++;
+    const x = (rng() - 0.5) * (WORLD_X - 4);
+    const z = (rng() - 0.5) * (WORLD_Z - 4);
+    let ok = true;
+    for (const t of trees) {
+      if (Math.hypot(t.x - x, t.z - z) < minDist) { ok = false; break; }
+    }
+    if (!ok) continue;
+
+    const sp = SPECIES[Math.floor(rng() * SPECIES.length)];
+    const height = sp.minH + rng() * (sp.maxH - sp.minH);
+    const canopyBaseRatio = sp.canopyBase[0] + rng() * (sp.canopyBase[1] - sp.canopyBase[0]);
+    const crownRadius = sp.crownSpread[0] + rng() * (sp.crownSpread[1] - sp.crownSpread[0]);
+    const trunkR = sp.trunkR[0] + rng() * (sp.trunkR[1] - sp.trunkR[0]);
+
+    trees.push({
+      x, z, height,
+      canopyStart: height * canopyBaseRatio,
+      crownRadius, trunkR,
+      crownShape: sp.crownShape,
+      leafDensity: sp.leafDensity,
+      lean: (rng() - 0.5) * 0.02,
+      species: sp.name,
+    });
+  }
+
+  loaderBar.style.width = '8%';
+
+  // --- Ground points ---
+  const groundPts = Math.floor(GROUND_AREA * 0.25);
+  for (let i = 0; i < groundPts; i++) {
+    const x = (rng() - 0.5) * WORLD_X;
+    const z = (rng() - 0.5) * WORLD_Z;
+    pos.push(x, terrainY(x, z) + (rng() - 0.5) * 0.1, z);
+    meta.push(0);
+  }
+  loaderBar.style.width = '12%';
+
+  // --- Distribute leaf budget across trees proportional to crown volume ---
+  let totalCrownWeight = 0;
+  trees.forEach(t => {
+    const crownH = t.height - t.canopyStart;
+    const vol = (4/3) * Math.PI * t.crownRadius * t.crownRadius * (crownH / 2);
+    t._weight = vol * t.leafDensity;
+    totalCrownWeight += t._weight;
+  });
+
+  let leafBudget = PRACTICAL_LEAF_TARGET;
+  // Reserve ~8% for understory
+  const understoryLeafBudget = Math.floor(leafBudget * 0.08);
+  const canopyLeafBudget = leafBudget - understoryLeafBudget;
+
+  let totalLeafPoints = 0;
+
+  // --- Tree trunks, branches, and canopy ---
+  trees.forEach((tree, ti) => {
+    const gy = terrainY(tree.x, tree.z);
+    const crownH = tree.height - tree.canopyStart;
+
+    // Trunk
+    const trunkPts = 40 + Math.floor(rng() * 40);
+    for (let i = 0; i < trunkPts; i++) {
+      const t = rng();
+      const h = t * (tree.canopyStart + crownH * 0.1);
+      const a = rng() * Math.PI * 2;
+      const r = tree.trunkR * (1 - t * 0.25) * (0.8 + rng() * 0.4);
+      pos.push(tree.x + Math.cos(a) * r + tree.lean * h, gy + h, tree.z + Math.sin(a) * r);
+      meta.push(1);
+    }
+
+    // Major branches
+    const branchCount = 3 + Math.floor(rng() * 5);
+    for (let b = 0; b < branchCount; b++) {
+      const bh = tree.canopyStart * 0.8 + rng() * crownH * 0.5;
+      const bAngle = rng() * Math.PI * 2;
+      const bLen = tree.crownRadius * (0.4 + rng() * 0.5);
+      const bPts = 8 + Math.floor(rng() * 10);
+      for (let i = 0; i < bPts; i++) {
+        const t = rng();
+        pos.push(
+          tree.x + Math.cos(bAngle) * bLen * t + tree.lean * bh,
+          gy + bh + (rng() - 0.5) * 0.6 - t * 2.0,
+          tree.z + Math.sin(bAngle) * bLen * t
+        );
+        meta.push(1);
+      }
+    }
+
+    // Canopy leaf points — proportional allocation
+    // CRITICAL: Realistic vertical LAD profile
+    // LAD should be low at canopy top, peak at ~50-65% of total tree height
+    // (which is ~25-50% down from crown top), then decrease toward crown base.
+    // We use a Beta-like distribution: nh is 0 at crown base, 1 at crown top.
+    // We want peak density at nh ≈ 0.55-0.65 (upper-mid crown).
+    // Sample using rejection of a Beta(3.5, 2.0)-shaped PDF centered at nh≈0.6
+    const thisTreeLeaves = Math.floor(canopyLeafBudget * (tree._weight / totalCrownWeight));
+
+    for (let i = 0; i < thisTreeLeaves; i++) {
+      // Beta-like sampling: generate nh with peak around 0.58
+      // Use inverse transform: nh = Beta(alpha=3.5, beta=2.0)
+      // Approximate via composition: average of multiple uniforms biased upward
+      // More efficient: use power-of-cosine method
+      let nh;
+      {
+        // Simple approach: transform uniform to peak at ~0.58
+        // Use nh = 1 - (1-u)^a * u^b where u=rng(), tuned to give right shape
+        // Actually, use the quantile trick: 
+        // Take u = rng(), apply shaping function
+        const u = rng();
+        // Map u through a function that concentrates mass around 0.58
+        // sin^2 shaping shifted: nh = sin(u * pi * 0.8 + 0.15)^0.7 works well
+        // But simplest: use two rng calls averaged with bias
+        const u2 = rng();
+        const u3 = rng();
+        // Weighted average pushing toward 0.55-0.65
+        nh = 0.3 * u + 0.35 * u2 + 0.35 * u3;
+        // This gives mean ~0.5, but we want ~0.58. Shift:
+        nh = nh * 0.75 + 0.2; // maps [0,1] -> [0.2, 0.95], mean ~0.575
+        // Clamp
+        nh = Math.max(0.0, Math.min(1.0, nh));
+      }
+
+      const ch = tree.canopyStart + nh * crownH;
+      let maxR;
+
+      switch (tree.crownShape) {
+        case 'round':
+          maxR = tree.crownRadius * Math.sin(nh * Math.PI) * (0.5 + rng() * 0.6);
+          break;
+        case 'columnar':
+          maxR = tree.crownRadius * 0.55 * (0.6 + rng() * 0.5) * (1 - Math.pow(Math.abs(nh - 0.5) * 2, 2) * 0.3);
+          break;
+        case 'oval':
+          maxR = tree.crownRadius * 0.75 * Math.sin(nh * Math.PI * 0.85 + 0.25) * (0.5 + rng() * 0.55);
+          break;
+        case 'vase': {
+          const spread = 0.4 + nh * 0.6;
+          maxR = tree.crownRadius * spread * (0.5 + rng() * 0.6);
+          break;
+        }
+        default:
+          maxR = tree.crownRadius * Math.sin(nh * Math.PI) * (0.5 + rng() * 0.55);
+      }
+
+      const angle = rng() * Math.PI * 2;
+      const r = maxR * Math.pow(rng(), 0.42);
+      // Organic noise
+      const nx = Math.sin(angle * 4 + ch * 0.4) * 0.5;
+      const nz = Math.cos(angle * 3 + ch * 0.6) * 0.5;
+
+      pos.push(
+        tree.x + Math.cos(angle) * r + nx * 0.25 + tree.lean * ch,
+        gy + ch + (rng() - 0.5) * 1.0,
+        tree.z + Math.sin(angle) * r + nz * 0.25
+      );
+      meta.push(2);
+      totalLeafPoints++;
+    }
+
+    if (ti % 20 === 0) loaderBar.style.width = (12 + 60 * ti / trees.length) + '%';
+  });
+
+  loaderBar.style.width = '75%';
+
+  // --- Understory ---
+  // Dense ground-layer: ferns, shrubs, saplings, herbs, mosses, deadwood
+  const plantCount = 600;
+  let understoryLeafUsed = 0;
+  const ptsPerPlant = Math.floor(understoryLeafBudget / plantCount);
+
+  for (let p = 0; p < plantCount && understoryLeafUsed < understoryLeafBudget; p++) {
+    const px = (rng() - 0.5) * (WORLD_X - 2);
+    const pz = (rng() - 0.5) * (WORLD_Z - 2);
+    const gy = terrainY(px, pz);
+    const kind = rng();
+    const budget = Math.min(ptsPerPlant, understoryLeafBudget - understoryLeafUsed);
+
+    if (kind < 0.2) {
+      // Fern — arching fronds radiating out
+      const h = 0.4 + rng() * 0.9;
+      const fronds = 5 + Math.floor(rng() * 6);
+      const ptsUsed = Math.min(budget, fronds * 8);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fa = (i / ptsUsed) * Math.PI * 2 + rng() * 0.2;
+        const t = rng();
+        const fh = h * t * (1 - t * 0.4);
+        const fr = 0.6 * t;
+        pos.push(px + Math.cos(fa) * fr, gy + fh, pz + Math.sin(fa) * fr);
+        meta.push(3); understoryLeafUsed++; totalLeafPoints++;
+      }
+    } else if (kind < 0.4) {
+      // Shrub — dense dome
+      const h = 0.8 + rng() * 2.5;
+      const rad = 0.6 + rng() * 1.5;
+      const ptsUsed = Math.min(budget, 80);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const fh = rng() * h;
+        const nh = fh / h;
+        const r = rad * Math.sin(nh * Math.PI) * (0.4 + rng() * 0.6);
+        pos.push(px + Math.cos(a) * r, gy + fh, pz + Math.sin(a) * r);
+        meta.push(3); understoryLeafUsed++; totalLeafPoints++;
+      }
+    } else if (kind < 0.55) {
+      // Sapling — miniature broadleaf tree
+      const h = 2 + rng() * 5;
+      const cBase = h * 0.35;
+      const cRad = 0.8 + rng() * 1.5;
+      // tiny trunk
+      for (let i = 0; i < 6; i++) {
+        pos.push(px + (rng()-0.5)*0.04, gy + rng() * cBase, pz + (rng()-0.5)*0.04);
+        meta.push(1);
+      }
+      const ptsUsed = Math.min(budget, 70);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fh = cBase + rng() * (h - cBase);
+        const nh = (fh - cBase) / (h - cBase);
+        const r = cRad * Math.sin(nh * Math.PI) * (0.3 + rng() * 0.7);
+        const a = rng() * Math.PI * 2;
+        pos.push(px + Math.cos(a) * r, gy + fh, pz + Math.sin(a) * r);
+        meta.push(3); understoryLeafUsed++; totalLeafPoints++;
+      }
+    } else if (kind < 0.7) {
+      // Herb/wildflower cluster
+      const h = 0.2 + rng() * 0.5;
+      const spread = 0.3 + rng() * 0.4;
+      const ptsUsed = Math.min(budget, 20);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const r = spread * Math.sqrt(rng());
+        pos.push(px + Math.cos(a) * r, gy + rng() * h, pz + Math.sin(a) * r);
+        meta.push(3); understoryLeafUsed++; totalLeafPoints++;
+      }
+    } else if (kind < 0.85) {
+      // Moss/ground cover mat
+      const spread = 0.5 + rng() * 1.2;
+      const ptsUsed = Math.min(budget, 30);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const r = spread * Math.sqrt(rng());
+        pos.push(px + Math.cos(a) * r, gy + rng() * 0.06, pz + Math.sin(a) * r);
+        meta.push(3); understoryLeafUsed++; totalLeafPoints++;
+      }
+    } else {
+      // Deadwood log
+      const len = 1 + rng() * 3;
+      const logA = rng() * Math.PI;
+      const ptsUsed = Math.min(budget, 15);
+      for (let i = 0; i < ptsUsed; i++) {
+        const t = rng();
+        const ca = rng() * Math.PI * 2;
+        const r = 0.1 + rng() * 0.1;
+        pos.push(
+          px + Math.cos(logA) * len * t + Math.sin(ca) * r * Math.sin(logA),
+          gy + 0.15 + Math.cos(ca) * r,
+          pz + Math.sin(logA) * len * t + Math.sin(ca) * r * Math.cos(logA)
+        );
+        meta.push(4);
+      }
+    }
+
+    if (p % 100 === 0) loaderBar.style.width = (75 + 15 * p / plantCount) + '%';
+  }
+
+  loaderBar.style.width = '92%';
+
+  // === Compute actual LAI ===
+  const actualLAI = totalLeafPoints * ACTUAL_LEAF_AREA / GROUND_AREA;
+
+  // If somehow over 5, prune
+  if (actualLAI > 5.0) {
+    const targetLeaves = Math.floor(5.0 * GROUND_AREA / ACTUAL_LEAF_AREA);
+    const keepRatio = targetLeaves / totalLeafPoints;
+    const prunedPos = [];
+    const prunedMeta = [];
+    let newLeaves = 0;
+    for (let i = 0; i < meta.length; i++) {
+      const isLeaf = meta[i] === 2 || meta[i] === 3;
+      if (isLeaf && rng() > keepRatio) continue;
+      prunedPos.push(pos[i*3], pos[i*3+1], pos[i*3+2]);
+      prunedMeta.push(meta[i]);
+      if (isLeaf) newLeaves++;
+    }
+    const finalLAI = newLeaves * ACTUAL_LEAF_AREA / GROUND_AREA;
+    loaderBar.style.width = '95%';
+    return { positions: new Float32Array(prunedPos), meta: prunedMeta, leafCount: newLeaves, lai: finalLAI, trees };
+  }
+
+  // If under 3, note it (unlikely with our budget)
+  loaderBar.style.width = '95%';
+  return { positions: new Float32Array(pos), meta, leafCount: totalLeafPoints, lai: actualLAI, trees };
+}
+
+// ==================== HEIGHT COLOR MAP ====================
+function heightToColor(nh) {
+  if (nh < 0.10) return { r: 0.05, g: 0.12, b: 0.65 + nh * 3.5 };
+  if (nh < 0.22) { const t=(nh-0.10)/0.12; return { r: 0.0, g: 0.45+t*0.45, b: 0.95-t*0.45 }; }
+  if (nh < 0.38) { const t=(nh-0.22)/0.16; return { r: 0.05+t*0.15, g: 0.7+t*0.2, b: 0.25-t*0.2 }; }
+  if (nh < 0.54) { const t=(nh-0.38)/0.16; return { r: 0.2+t*0.5, g: 0.85-t*0.05, b: 0.0 }; }
+  if (nh < 0.72) { const t=(nh-0.54)/0.18; return { r: 0.7+t*0.2, g: 0.7-t*0.3, b: 0.0 }; }
+  { const t=Math.min(1,(nh-0.72)/0.28); return { r: 0.88+t*0.12, g: 0.32-t*0.28, b: 0.0+t*0.03 }; }
+}
+
+// ==================== BUILD VISUAL ====================
+function buildPointCloud(data) {
+  const { positions, meta, leafCount, lai, trees } = data;
+  const count = meta.length;
+
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < count; i++) { const y = positions[i*3+1]; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  const rangeY = maxY - minY || 1;
+
+  const heightCol = new Float32Array(count * 3);
+  const intensityCol = new Float32Array(count * 3);
+  const classCol = new Float32Array(count * 3);
+  const laiCol = new Float32Array(count * 3);
+
+  // LAI heatmap grid
+  const gridRes = 3;
+  const gridNx = Math.ceil(WORLD_X / gridRes);
+  const gridNz = Math.ceil(WORLD_Z / gridRes);
+  const laiGrid = new Float32Array(gridNx * gridNz);
+
+  for (let i = 0; i < count; i++) {
+    if (meta[i] === 2 || meta[i] === 3) {
+      const gx = Math.floor((positions[i*3] + WORLD_X/2) / gridRes);
+      const gz = Math.floor((positions[i*3+2] + WORLD_Z/2) / gridRes);
+      if (gx >= 0 && gx < gridNx && gz >= 0 && gz < gridNz)
+        laiGrid[gz * gridNx + gx] += ACTUAL_LEAF_AREA / (gridRes * gridRes);
+    }
+  }
+  let maxLocalLAI = 0;
+  for (let i = 0; i < laiGrid.length; i++) if (laiGrid[i] > maxLocalLAI) maxLocalLAI = laiGrid[i];
+
+  for (let i = 0; i < count; i++) {
+    const nh = (positions[i*3+1] - minY) / rangeY;
+
+    // Height
+    const hc = heightToColor(nh);
+    heightCol[i*3] = hc.r; heightCol[i*3+1] = hc.g; heightCol[i*3+2] = hc.b;
+
+    // Intensity
+    const inten = 0.12 + nh * 0.8 + (rng() - 0.5) * 0.08;
+    intensityCol[i*3] = inten * 0.12; intensityCol[i*3+1] = inten; intensityCol[i*3+2] = inten * 0.08;
+
+    // Classification
+    switch(meta[i]) {
+      case 0: heightCol[i*3]*=0.9; classCol[i*3]=0.5; classCol[i*3+1]=0.32; classCol[i*3+2]=0.15; break;
+      case 1: classCol[i*3]=0.42; classCol[i*3+1]=0.26; classCol[i*3+2]=0.1; break;
+      case 2: classCol[i*3]=0.05; classCol[i*3+1]=0.72; classCol[i*3+2]=0.22; break;
+      case 3: classCol[i*3]=0.35; classCol[i*3+1]=0.88; classCol[i*3+2]=0.12; break;
+      case 4: classCol[i*3]=0.38; classCol[i*3+1]=0.28; classCol[i*3+2]=0.12; break;
+    }
+
+    // LAI heatmap
+    const gx = Math.floor((positions[i*3] + WORLD_X/2) / gridRes);
+    const gz = Math.floor((positions[i*3+2] + WORLD_Z/2) / gridRes);
+    let localLAI = 0;
+    if (gx >= 0 && gx < gridNx && gz >= 0 && gz < gridNz) localLAI = laiGrid[gz * gridNx + gx];
+    const ln = maxLocalLAI > 0 ? localLAI / maxLocalLAI : 0;
+    if (ln < 0.25)      { const t=ln/0.25;       laiCol[i*3]=0;   laiCol[i*3+1]=t;   laiCol[i*3+2]=1; }
+    else if (ln < 0.5)  { const t=(ln-0.25)/0.25; laiCol[i*3]=0;   laiCol[i*3+1]=1;   laiCol[i*3+2]=1-t; }
+    else if (ln < 0.75) { const t=(ln-0.5)/0.25;  laiCol[i*3]=t;   laiCol[i*3+1]=1;   laiCol[i*3+2]=0; }
+    else                 { const t=(ln-0.75)/0.25; laiCol[i*3]=1;   laiCol[i*3+1]=1-t; laiCol[i*3+2]=0; }
+  }
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i++) colors[i] = heightCol[i];
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: 0.18, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.9,
+  });
+
+  const cloud = new THREE.Points(geometry, material);
+  scene.add(cloud);
+
+  // ===== BOUNDING BOX =====
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const x = positions[i*3], z = positions[i*3+2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  const boxW = maxX - minX, boxH = maxY - minY, boxD = maxZ - minZ;
+  const boxGeo = new THREE.BoxGeometry(boxW, boxH, boxD);
+  const edges = new THREE.EdgesGeometry(boxGeo);
+  const boundingBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xbbddff, opacity: 0.85, transparent: true }));
+  boundingBox.position.set((minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2);
+  scene.add(boundingBox);
+
+  // ===== GROUND PLANE =====
+  // Terrain-following ground mesh using the terrainY function
+  const groundResX = 80, groundResZ = 40;
+  const groundGeo = new THREE.PlaneGeometry(WORLD_X + 4, WORLD_Z + 4, groundResX, groundResZ);
+  groundGeo.rotateX(-Math.PI / 2);
+  const gPos = groundGeo.attributes.position;
+  for (let i = 0; i < gPos.count; i++) {
+    const gx = gPos.getX(i);
+    const gz = gPos.getZ(i);
+    gPos.setY(i, terrainY(gx, gz) - 0.15);
+  }
+  groundGeo.computeVertexNormals();
+  // Semi-transparent dark ground with slight color
+  const groundMat = new THREE.MeshBasicMaterial({
+    color: 0x1a1508,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+    wireframe: false,
+  });
+  const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  scene.add(groundMesh);
+
+  // Ground wireframe for texture
+  const groundWireMat = new THREE.MeshBasicMaterial({
+    color: 0x443820,
+    transparent: true,
+    opacity: 0.12,
+    wireframe: true,
+  });
+  const groundWire = new THREE.Mesh(groundGeo.clone(), groundWireMat);
+  scene.add(groundWire);
+
+  // HUD
+  document.getElementById('pointCount').textContent = count.toLocaleString();
+  document.getElementById('leafPoints').textContent = leafCount.toLocaleString();
+  document.getElementById('treeCount').textContent = trees.length;
+  document.getElementById('groundArea').textContent = GROUND_AREA.toLocaleString();
+  document.getElementById('leafSize').textContent = ACTUAL_LEAF_AREA.toFixed(4);
+  document.getElementById('laiValue').textContent = lai.toFixed(2);
+  document.getElementById('stemDensity').textContent = Math.round(trees.length / (GROUND_AREA / 10000));
+
+  return { cloud, heightCol, intensityCol, classCol, laiCol, count };
+}
+
+// ==================== GLOBALS ====================
+let cloudData;
+
+function setColorMode(mode) {
+  if (!cloudData) return;
+  const src = { height: cloudData.heightCol, intensity: cloudData.intensityCol, classification: cloudData.classCol, lai: cloudData.laiCol }[mode];
+  const attr = cloudData.cloud.geometry.getAttribute('color');
+  for (let i = 0; i < cloudData.count * 3; i++) attr.array[i] = src[i];
+  attr.needsUpdate = true;
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + mode).classList.add('active');
+}
+
+function toggleAutoRotate() {
+  autoRotate = !autoRotate;
+  document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+}
+
+function resetCamera() {
+  spherical = { theta: 0.4, phi: Math.PI / 3.2, radius: 120 };
+  target.set(0, 16, 0);
+  updateCamera();
+}
+
+// ==================== ANIMATION ====================
+let frameCount = 0, lastFpsTime = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  if (autoRotate) { spherical.theta += 0.0015; updateCamera(); }
+  renderer.render(scene, camera);
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) { document.getElementById('fps').textContent = frameCount; frameCount = 0; lastFpsTime = now; }
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ==================== INIT ====================
+function init() {
+  const data = generateForest();
+  cloudData = buildPointCloud(data);
+  document.getElementById('loaderBar').style.width = '100%';
+  setTimeout(() => document.getElementById('loading').classList.add('hidden'), 500);
+  updateCamera();
+  animate();
+}
+
+init();
+</script>
+</body>
+</html>
