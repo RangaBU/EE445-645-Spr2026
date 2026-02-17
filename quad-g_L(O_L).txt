@@ -1,0 +1,256 @@
+	PROGRAM QUAD_g_L(O_L)
+*
+* this simple program illustrates 
+*
+* (1) obtain quadrature [ng,xg,wg]
+* (2) obtain leaf normal orientation pdfs [PLANOPHILE gL, and UNIFORM hL]
+*
+* 
+* begin declarations
+*
+	PARAMETER (PI = 3.141592654)
+        PARAMETER (ng = 4)
+	PARAMETER (degtorad = 3.141592654/180.0)
+	PARAMETER (radtodeg = 180.0/3.141592654)
+*
+        REAL xg(ng), wg(ng), gL(ng), hL(ng)
+*
+*
+* end declarations
+*
+* get quadrature
+*
+	CALL gauss_quad (ng,xg,wg)
+*
+* check the quadrature
+*
+	CALL check_quad (ng,xg,wg)
+*
+* example integral
+*
+	CALL example_integral (ng,xg,wg)
+*
+* get pdf of leaf normal orientation gL(thetaL) and hL(phiL)
+*
+	CALL leaf_normal_pdf (ng,xg,wg,gL,hL)
+*
+* 
+	STOP
+	END
+*------------------------------------------------------------------------------*
+
+
+*------------------------------------------------------------------------------*
+*
+        SUBROUTINE gauss_quad  (ng,xg,wg)
+*
+* program for obtaining gauss quadrature of order ng
+*
+* inputs:
+*   ng: quadrature order (integer)
+*   ng must be 4, 6, 8, 10 OR 12
+*
+* outputs:
+*   xg: ordinates (real)
+*   wg: weights   (real)
+*
+*
+* begin declarations
+*
+        REAL xg(12), wg(12), xx(20), ww(20)
+        INTEGER ishift(6), ng, ng2, i
+*
+        DATA xx/-0.861136312,-0.339981044,-0.9324695,-0.6612094,
+     *          -0.2386192,-0.960289856,-0.796666477,-0.525532410,
+     *          -0.183434642,
+     *          -0.973906529,-0.865063367,-0.679409568,-0.433395394,
+     *          -0.148874339,
+     *          -0.981560634,-0.904117256,-0.769902674,-0.587317954,
+     *          -0.367831499,-0.125233409/
+*
+        DATA ww/ 0.347854845, 0.652145155,0.1713245, 0.3607616,
+     *           0.4679139, 0.101228536, 0.222381034, 0.313706646,
+     *           0.362683783,
+     *           0.066671344,0.149451349,0.219086363,0.269266719,
+     *           0.295524225,
+     *           0.047175336,0.106939326,0.160078329,0.203167427,
+     *           0.233492537,0.249147046/
+*
+        DATA ishift/0,0,2,5,9,14/
+*
+* end declarations
+*
+*
+* set values for xg and wg
+*
+ 	ng2 = ng/2
+*
+        DO i = 1, ng2
+           xg(i)  = xx(i+ishift(ng2))
+           wg(i)  = ww(i+ishift(ng2))
+        END DO
+*
+        DO i = ng2+1, ng
+           xg(i)  = -xg(ng+1-i)
+           wg(i)  =  wg(ng+1-i)
+        END DO
+* 
+* done
+*
+        RETURN
+        END
+*------------------------------------------------------------------------------*
+
+
+*------------------------------------------------------------------------------*
+*
+	SUBROUTINE check_quad (ng, xg, wg)
+*
+* this routine -  
+*
+*  (1) checks if the quadrature weights sum to 2.0
+*  (2) checks if [ int_0^1 dx x ] is equal to 0.5
+* 
+* begin declarations
+*
+*
+        REAL    xg(ng), wg(ng), sum
+        INTEGER ng, i
+*
+* end declarations
+*
+*
+* check if the weights sum to 2.0
+*
+	sum = 0.0
+	DO i = 1, ng
+	   sum = sum + wg(i)
+	END DO
+	WRITE (*,*) " Qwts check (=2.0?): ", sum
+*
+* check if [ int_0^1 dx x ] is equal to 0.5
+*
+	sum = 0.0
+	DO i = (ng/2)+1, ng
+	   sum = sum + (xg(i)*wg(i))
+	END DO
+	WRITE (*,*) " Qord check (=0.5?): ", sum
+* 
+* done
+*
+        RETURN
+        END
+*------------------------------------------------------------------------------*
+
+
+*------------------------------------------------------------------------------*
+*
+	SUBROUTINE example_integral (ng,xg,wg)
+*
+* this routine illustrates -
+*
+* how to do the integral whose lower and upper bounds are A and B
+* for example [ int_A^B dx |x| ] , A = -1 and B = +1
+*
+* begin declarations
+*
+*
+        REAL      xg(ng), wg(ng), sum, conv1, conv2, neword
+	REAL      upperlimit, lowerlimit
+*
+	INTEGER   i
+*
+* end declarations
+*
+*  step 1: define conversion factors conv1 and conv2
+*
+	upperlimit =  1.0
+	lowerlimit = -1.0
+  	conv1 = (upperlimit-lowerlimit)/2.0
+	conv2 = (upperlimit+lowerlimit)/2.0
+*
+*  step 2: do the integral by making sure the ordinates run between 
+*          the upperlimit and the lowerlimit
+*
+	sum = 0.0
+	do i = 1, ng
+	   neword = conv1*xg(i) + conv2
+	   sum    = sum + abs(neword*wg(i))
+	END DO
+*
+*  step 3: make sure not to forget to apply the conversion factor 1 again
+*
+	sum = sum*conv1
+	WRITE (*,*) " Intg check (=1.0?): ", sum
+	sum = 0.0
+* 
+* done
+*
+        RETURN
+        END
+*------------------------------------------------------------------------------*
+
+
+
+*------------------------------------------------------------------------------*
+*
+	SUBROUTINE leaf_normal_pdf(ng,xg,wg,gL,hL)
+* 
+* this routine evaluates PLANOPHILE leaf normal inclination pdf (gL)
+* and UNIFORM leaf normal azimuthal pdf (hL)
+* 
+* begin declarations
+*
+	PARAMETER (PI = 3.141592654)
+*
+        REAL     xg(ng), wg(ng), gL(ng), hL(ng)
+	REAL     upperlimit, lowerlimit, conv1, conv2, sum
+        REAL     neword
+*
+	INTEGER  i
+*
+* end declarations
+*
+* set hL = 1.0
+*
+	DO i = 1, ng
+	   hL(i) = 1.0
+	END DO
+*
+* obtain the planophile gL
+*
+         gL(thetaL) = (2/pi) (1+cos(2thetaL))
+*
+* and at the same time check if it satisfies the required condition
+* of normalization, that is, 
+*
+*   [ int_0^(pi/2) dthetaL gL(thetaL) = 1.0 ]
+*
+*  step 1: define limits of integration and the convertion factors
+*
+	upperlimit = PI/2.0
+	lowerlimit = 0.0
+  	conv1 = (upperlimit-lowerlimit)/2.0
+	conv2 = (upperlimit+lowerlimit)/2.0
+*
+*  step 2: do the integral by making sure the ordinates run between 
+*          the upperlimit and the lowerlimit
+*
+	sum = 0.0
+	do i = 1, ng
+	   neword = conv1*xg(i) + conv2
+	   gL(i)  = (2.0/PI)*(1.0+COS(2.0*neword))
+	   sum    = sum + gL(i)*wg(i)
+	END DO
+*
+*  step 3: make sure not to forget to apply the conversion factor 1 again
+*
+	sum = sum*conv1
+	WRITE (*,*) " LNO  check (=1.0?): ", sum
+* 
+* done
+*
+        RETURN
+        END
+*------------------------------------------------------------------------------*
+
