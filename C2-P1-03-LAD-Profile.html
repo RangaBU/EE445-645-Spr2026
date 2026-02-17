@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vertical LAD Profile</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #ffffff;
+    font-family: 'Times New Roman', Times, serif;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 30px;
+  }
+  h1 {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 20px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: #000; margin-bottom: 6px;
+  }
+  .subtitle {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 15px; color: #111; font-style: italic;
+    margin-bottom: 24px; letter-spacing: 0.3px;
+  }
+  canvas { border-radius: 0; }
+  #stats {
+    margin-top: 20px; font-family: 'Times New Roman', Times, serif;
+    font-size: 14px; color: #000; text-align: center;
+    line-height: 2.0;
+  }
+  #stats span { color: #000; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<h1>Vertical LAD Profile</h1>
+<p class="subtitle">XY-averaged leaf area density (m² m⁻³) vs. height above ground (m)</p>
+<canvas id="chart" width="960" height="620"></canvas>
+<div id="stats"></div>
+
+<script>
+// ==================== EXACT SAME FOREST GENERATION ====================
+const WORLD_X = 120, WORLD_Z = 60;
+const GROUND_AREA = WORLD_X * WORLD_Z;
+const TARGET_LAI = 4.0;
+const PRACTICAL_LEAF_TARGET = 700000;
+const ACTUAL_LEAF_AREA = (TARGET_LAI * GROUND_AREA) / PRACTICAL_LEAF_TARGET;
+
+function mulberry32(a) {
+  return function() { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+}
+const rng = mulberry32(314159);
+
+const SPECIES = [
+  { name:'Oak',     minH:22, maxH:38, crownShape:'round',    crownSpread:[6,10], trunkR:[0.3,0.6],  canopyBase:[0.45,0.55], leafDensity:1.0 },
+  { name:'Maple',   minH:18, maxH:30, crownShape:'round',    crownSpread:[5,8],  trunkR:[0.25,0.45], canopyBase:[0.4,0.55],  leafDensity:1.05 },
+  { name:'Beech',   minH:25, maxH:40, crownShape:'columnar', crownSpread:[5,9],  trunkR:[0.3,0.55], canopyBase:[0.4,0.5],   leafDensity:0.95 },
+  { name:'Birch',   minH:14, maxH:24, crownShape:'oval',     crownSpread:[3,6],  trunkR:[0.12,0.25], canopyBase:[0.35,0.5],  leafDensity:0.7 },
+  { name:'Ash',     minH:20, maxH:35, crownShape:'round',    crownSpread:[5,9],  trunkR:[0.25,0.5], canopyBase:[0.45,0.6],  leafDensity:0.85 },
+  { name:'Hickory', minH:20, maxH:32, crownShape:'oval',     crownSpread:[4,7],  trunkR:[0.2,0.4],  canopyBase:[0.5,0.6],   leafDensity:0.9 },
+  { name:'Elm',     minH:18, maxH:30, crownShape:'vase',     crownSpread:[6,10], trunkR:[0.3,0.55], canopyBase:[0.35,0.5],  leafDensity:1.0 },
+  { name:'Poplar',  minH:20, maxH:35, crownShape:'columnar', crownSpread:[3,5],  trunkR:[0.2,0.4],  canopyBase:[0.3,0.45],  leafDensity:0.8 },
+  { name:'Linden',  minH:18, maxH:30, crownShape:'round',    crownSpread:[5,8],  trunkR:[0.25,0.45], canopyBase:[0.35,0.5],  leafDensity:1.1 },
+  { name:'Walnut',  minH:16, maxH:28, crownShape:'round',    crownSpread:[5,9],  trunkR:[0.25,0.5], canopyBase:[0.4,0.55],  leafDensity:0.85 },
+];
+
+function terrainY(x, z) {
+  return Math.sin(x * 0.025) * 1.5 + Math.cos(z * 0.04) * 1.0 + Math.sin((x + z) * 0.015) * 0.8;
+}
+
+// ==================== GENERATE FOREST (leaf heights only) ====================
+function generateLeafHeights() {
+  const leafHeights = []; // absolute Y values of all leaf points
+
+  // Place trees — identical to main file
+  const targetTrees = Math.round(700 * GROUND_AREA / 10000);
+  const trees = [];
+  const minDist = 2.5;
+  let attempts = 0;
+  while (trees.length < targetTrees && attempts < targetTrees * 15) {
+    attempts++;
+    const x = (rng() - 0.5) * (WORLD_X - 4);
+    const z = (rng() - 0.5) * (WORLD_Z - 4);
+    let ok = true;
+    for (const t of trees) { if (Math.hypot(t.x - x, t.z - z) < minDist) { ok = false; break; } }
+    if (!ok) continue;
+    const sp = SPECIES[Math.floor(rng() * SPECIES.length)];
+    const height = sp.minH + rng() * (sp.maxH - sp.minH);
+    const canopyBaseRatio = sp.canopyBase[0] + rng() * (sp.canopyBase[1] - sp.canopyBase[0]);
+    const crownRadius = sp.crownSpread[0] + rng() * (sp.crownSpread[1] - sp.crownSpread[0]);
+    const trunkR = sp.trunkR[0] + rng() * (sp.trunkR[1] - sp.trunkR[0]);
+    trees.push({ x, z, height, canopyStart: height * canopyBaseRatio, crownRadius, trunkR,
+      crownShape: sp.crownShape, leafDensity: sp.leafDensity, lean: (rng()-0.5)*0.02 });
+  }
+
+  // Ground points — consume RNG to stay in sync
+  const groundPts = Math.floor(GROUND_AREA * 0.25);
+  for (let i = 0; i < groundPts; i++) { rng(); rng(); rng(); }
+
+  // Crown weights
+  let totalCrownWeight = 0;
+  trees.forEach(t => {
+    const crownH = t.height - t.canopyStart;
+    t._weight = (4/3) * Math.PI * t.crownRadius * t.crownRadius * (crownH/2) * t.leafDensity;
+    totalCrownWeight += t._weight;
+  });
+  const understoryLeafBudget = Math.floor(PRACTICAL_LEAF_TARGET * 0.08);
+  const canopyLeafBudget = PRACTICAL_LEAF_TARGET - understoryLeafBudget;
+
+  // Trees
+  trees.forEach(tree => {
+    const gy = terrainY(tree.x, tree.z);
+    const crownH = tree.height - tree.canopyStart;
+
+    // Trunk — consume RNG
+    const trunkPts = 40 + Math.floor(rng() * 40);
+    for (let i = 0; i < trunkPts; i++) { rng(); rng(); rng(); }
+
+    // Branches — consume RNG
+    const branchCount = 3 + Math.floor(rng() * 5);
+    for (let b = 0; b < branchCount; b++) {
+      rng(); rng(); rng();
+      const bPts = 8 + Math.floor(rng() * 10);
+      for (let i = 0; i < bPts; i++) { rng(); rng(); rng(); }
+    }
+
+    // Canopy leaves — SAME distribution as updated forest file
+    const thisTreeLeaves = Math.floor(canopyLeafBudget * (tree._weight / totalCrownWeight));
+    for (let i = 0; i < thisTreeLeaves; i++) {
+      // Beta-like height sampling (3 rng calls)
+      let nh;
+      {
+        const u = rng();
+        const u2 = rng();
+        const u3 = rng();
+        nh = 0.3 * u + 0.35 * u2 + 0.35 * u3;
+        nh = nh * 0.75 + 0.2;
+        nh = Math.max(0.0, Math.min(1.0, nh));
+      }
+      const ch = tree.canopyStart + nh * crownH;
+
+      // maxR — consume 1 rng call (same as forest)
+      switch (tree.crownShape) {
+        case 'round': rng(); break;
+        case 'columnar': rng(); break;
+        case 'oval': rng(); break;
+        case 'vase': rng(); break;
+        default: rng();
+      }
+      // angle, r — consume 2 rng calls
+      rng(); rng();
+      // final y noise — 1 rng call
+      const yNoise = (rng() - 0.5) * 1.0;
+
+      // Record the height above ground
+      leafHeights.push(ch + yNoise);
+    }
+  });
+
+  // Understory — consume RNG and record leaf heights
+  const plantCount = 600;
+  const ptsPerPlant = Math.floor(understoryLeafBudget / plantCount);
+  let understoryUsed = 0;
+
+  for (let p = 0; p < plantCount && understoryUsed < understoryLeafBudget; p++) {
+    const px = (rng() - 0.5) * (WORLD_X - 2);
+    const pz = (rng() - 0.5) * (WORLD_Z - 2);
+    const gy = terrainY(px, pz);
+    const kind = rng();
+    const budget = Math.min(ptsPerPlant, understoryLeafBudget - understoryUsed);
+
+    if (kind < 0.2) {
+      const h = 0.4 + rng() * 0.9;
+      const fronds = 5 + Math.floor(rng() * 6);
+      const ptsUsed = Math.min(budget, fronds * 8);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fa = (i / ptsUsed) * Math.PI * 2 + rng() * 0.2;
+        const t = rng();
+        leafHeights.push(gy + h * t * (1-t*0.4));
+        understoryUsed++;
+      }
+    } else if (kind < 0.4) {
+      const h = 0.8 + rng() * 2.5;
+      const rad = 0.6 + rng() * 1.5;
+      const ptsUsed = Math.min(budget, 80);
+      for (let i = 0; i < ptsUsed; i++) {
+        rng(); // angle
+        const fh = rng() * h;
+        rng(); // radius
+        leafHeights.push(gy + fh);
+        understoryUsed++;
+      }
+    } else if (kind < 0.55) {
+      const h = 2 + rng() * 5;
+      const cBase = h * 0.35;
+      const cRad = 0.8 + rng() * 1.5;
+      for (let i = 0; i < 6; i++) { rng(); rng(); } // trunk
+      const ptsUsed = Math.min(budget, 70);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fh = cBase + rng() * (h - cBase);
+        rng(); // nh/r
+        rng(); // angle
+        leafHeights.push(gy + fh);
+        understoryUsed++;
+      }
+    } else if (kind < 0.7) {
+      const h = 0.2 + rng() * 0.5;
+      const spread = 0.3 + rng() * 0.4;
+      const ptsUsed = Math.min(budget, 20);
+      for (let i = 0; i < ptsUsed; i++) {
+        rng(); // angle
+        rng(); // r
+        leafHeights.push(gy + rng() * h);
+        understoryUsed++;
+      }
+    } else if (kind < 0.85) {
+      const spread = 0.5 + rng() * 1.2;
+      const ptsUsed = Math.min(budget, 30);
+      for (let i = 0; i < ptsUsed; i++) {
+        rng(); rng(); // angle, r
+        leafHeights.push(gy + rng() * 0.06);
+        understoryUsed++;
+      }
+    } else {
+      const len = 1 + rng() * 3;
+      const logA = rng() * Math.PI;
+      const ptsUsed = Math.min(budget, 15);
+      for (let i = 0; i < ptsUsed; i++) {
+        rng(); rng(); rng(); // deadwood — not leaf
+      }
+    }
+  }
+
+  return { leafHeights, trees };
+}
+
+// ==================== COMPUTE VERTICAL PROFILE ====================
+function computeProfile(leafHeights) {
+  // Find min terrain height (approximate as min leaf height minus a bit)
+  let minH = Infinity, maxH = -Infinity;
+  for (const h of leafHeights) {
+    if (h < minH) minH = h;
+    if (h > maxH) maxH = h;
+  }
+
+  // Use 0.5m height bins
+  const binSize = 0.5; // meters
+  const groundLevel = minH - 1; // approximate ground
+  const topLevel = maxH + 1;
+  const nBins = Math.ceil((topLevel - groundLevel) / binSize);
+  const counts = new Float64Array(nBins);
+
+  for (const h of leafHeights) {
+    const bin = Math.floor((h - groundLevel) / binSize);
+    if (bin >= 0 && bin < nBins) counts[bin]++;
+  }
+
+  // LAD per bin = (count * ACTUAL_LEAF_AREA) / (GROUND_AREA * binSize)
+  // Units: m² / (m² * m) = m² m⁻³
+  const lad = new Float64Array(nBins);
+  const heights = new Float64Array(nBins);
+  let maxLAD = 0;
+  let peakHeight = 0;
+
+  for (let i = 0; i < nBins; i++) {
+    heights[i] = groundLevel + (i + 0.5) * binSize;
+    lad[i] = (counts[i] * ACTUAL_LEAF_AREA) / (GROUND_AREA * binSize);
+    if (lad[i] > maxLAD) { maxLAD = lad[i]; peakHeight = heights[i]; }
+  }
+
+  // Compute integral (should equal LAI)
+  let totalLAI = 0;
+  for (let i = 0; i < nBins; i++) totalLAI += lad[i] * binSize;
+
+  return { heights, lad, maxLAD, peakHeight, totalLAI, groundLevel, nBins, binSize };
+}
+
+// ==================== DRAW CHART ====================
+function drawChart(profile) {
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+
+  // Layout
+  const margin = { top: 35, right: 90, bottom: 72, left: 90 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  // Data range
+  const { heights, lad, maxLAD, peakHeight, groundLevel, nBins, binSize } = profile;
+  const hMin = groundLevel;
+  const hMax = heights[nBins - 1] + binSize;
+  const ladMax = maxLAD * 1.15;
+
+  // Scales
+  const xScale = v => margin.left + (v / ladMax) * plotW;
+  const yScale = v => margin.top + plotH - ((v - hMin) / (hMax - hMin)) * plotH;
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Plot area background
+  ctx.fillStyle = '#f8f8f6';
+  ctx.fillRect(margin.left, margin.top, plotW, plotH);
+
+  // Subtle plot border
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+  ctx.lineWidth = 0.5;
+
+  // Y grid (height)
+  const yStep = 5; // every 5 m
+  ctx.font = '15px "Times New Roman", Times, serif';
+  ctx.fillStyle = '#222';
+  ctx.textAlign = 'right';
+  for (let h = 0; h <= Math.ceil(hMax); h += yStep) {
+    const y = yScale(h);
+    if (y < margin.top || y > margin.top + plotH) continue;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, y);
+    ctx.lineTo(margin.left + plotW, y);
+    ctx.stroke();
+    // Tick mark
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(margin.left - 5, y);
+    ctx.lineTo(margin.left, y);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx.lineWidth = 0.5;
+    ctx.fillText(h.toFixed(0), margin.left - 10, y + 5);
+  }
+
+  // X grid (LAD)
+  ctx.textAlign = 'center';
+  ctx.font = '15px "Times New Roman", Times, serif';
+  ctx.fillStyle = '#222';
+  const xStep = maxLAD > 0.3 ? 0.1 : maxLAD > 0.1 ? 0.05 : 0.02;
+  for (let v = 0; v <= ladMax; v += xStep) {
+    const x = xScale(v);
+    if (x < margin.left || x > margin.left + plotW) continue;
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, margin.top);
+    ctx.lineTo(x, margin.top + plotH);
+    ctx.stroke();
+    // Tick mark
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, margin.top + plotH);
+    ctx.lineTo(x, margin.top + plotH + 5);
+    ctx.stroke();
+    ctx.fillText(v.toFixed(2), x, margin.top + plotH + 22);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2.0;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, margin.top);
+  ctx.lineTo(margin.left, margin.top + plotH);
+  ctx.lineTo(margin.left + plotW, margin.top + plotH);
+  ctx.stroke();
+
+  // Fill under curve with rich layered gradient
+  // First: build the path
+  ctx.beginPath();
+  ctx.moveTo(xScale(0), yScale(heights[0]));
+  for (let i = 0; i < nBins; i++) {
+    ctx.lineTo(xScale(lad[i]), yScale(heights[i]));
+  }
+  ctx.lineTo(xScale(0), yScale(heights[nBins - 1]));
+  ctx.closePath();
+  ctx.save();
+  ctx.clip();
+
+  // Vertical gradient: ground layer (earth tones) → mid canopy (deep forest green) → upper canopy (warm gold-green)
+  const gradV = ctx.createLinearGradient(margin.left, yScale(hMax), margin.left, yScale(hMin));
+  gradV.addColorStop(0.0,  'rgba(180, 60, 30, 0.22)');
+  gradV.addColorStop(0.15, 'rgba(210, 140, 20, 0.20)');
+  gradV.addColorStop(0.35, 'rgba(60, 155, 50, 0.22)');
+  gradV.addColorStop(0.55, 'rgba(20, 120, 80, 0.25)');
+  gradV.addColorStop(0.75, 'rgba(15, 90, 70, 0.18)');
+  gradV.addColorStop(1.0,  'rgba(30, 80, 120, 0.10)');
+  ctx.fillStyle = gradV;
+  ctx.fillRect(margin.left, margin.top, plotW, plotH);
+
+  // Horizontal gradient: stronger near the curve, fading toward the axis
+  const gradH = ctx.createLinearGradient(xScale(0), 0, xScale(ladMax * 0.6), 0);
+  gradH.addColorStop(0.0, 'rgba(255,255,255,0.6)');
+  gradH.addColorStop(0.4, 'rgba(255,255,255,0.15)');
+  gradH.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+  ctx.fillStyle = gradH;
+  ctx.fillRect(margin.left, margin.top, plotW, plotH);
+
+  // Subtle horizontal bands for canopy layer feel
+  for (let i = 0; i < nBins; i += 2) {
+    const y1 = yScale(heights[i] + binSize / 2);
+    const y2 = yScale(heights[i] - binSize / 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.012)';
+    ctx.fillRect(margin.left, Math.min(y1, y2), plotW, Math.abs(y2 - y1));
+  }
+
+  ctx.restore();
+
+  // Draw profile line — thick with glow
+  // Shadow/glow layer
+  ctx.beginPath();
+  ctx.moveTo(xScale(lad[0]), yScale(heights[0]));
+  for (let i = 1; i < nBins; i++) {
+    ctx.lineTo(xScale(lad[i]), yScale(heights[i]));
+  }
+  ctx.strokeStyle = 'rgba(0,80,50,0.15)';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+
+  // Main line
+  ctx.beginPath();
+  ctx.moveTo(xScale(lad[0]), yScale(heights[0]));
+  for (let i = 1; i < nBins; i++) {
+    ctx.lineTo(xScale(lad[i]), yScale(heights[i]));
+  }
+  ctx.strokeStyle = '#005538';
+  ctx.lineWidth = 3.2;
+  ctx.shadowColor = 'rgba(0,60,40,0.3)';
+  ctx.shadowBlur = 4;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Peak marker
+  const peakX = xScale(maxLAD);
+  const peakY = yScale(peakHeight);
+
+  // Horizontal dashed line at peak
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = 'rgba(180,30,20,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, peakY);
+  ctx.lineTo(peakX, peakY);
+  ctx.stroke();
+  // Vertical dashed line at peak
+  ctx.beginPath();
+  ctx.moveTo(peakX, peakY);
+  ctx.lineTo(peakX, margin.top + plotH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Peak dot
+  ctx.beginPath();
+  ctx.arc(peakX, peakY, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#bb2211';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Peak label
+  ctx.font = 'bold 14px "Times New Roman", Times, serif';
+  ctx.fillStyle = '#111';
+  // If peak is in the right half of the plot, label goes left; otherwise right
+  const labelLeft = peakX > margin.left + plotW * 0.4;
+  ctx.textAlign = labelLeft ? 'right' : 'left';
+  const labelX = labelLeft ? peakX - 10 : peakX + 10;
+  ctx.fillText(`Peak: ${maxLAD.toFixed(3)} m\u00B2 m\u207B\u00B3 at ${peakHeight.toFixed(1)} m`, labelX, peakY - 10);
+
+  // Axis labels
+  ctx.font = 'bold 17px "Times New Roman", Times, serif';
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'center';
+  ctx.fillText('Leaf Area Density, LAD (m\u00B2 m\u207B\u00B3)', margin.left + plotW / 2, H - 8);
+
+  ctx.save();
+  ctx.translate(20, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Height above ground (m)', 0, 0);
+  ctx.restore();
+
+  // Normalized height annotations
+  const meanCanopyH = profile.peakHeight / 0.58;
+  ctx.textAlign = 'left';
+
+  const fracs = [0.25, 0.50, 0.60, 0.75, 1.0];
+  for (const f of fracs) {
+    const absH = meanCanopyH * f;
+    const y = yScale(absH);
+    if (y > margin.top && y < margin.top + plotH) {
+      ctx.fillStyle = '#333';
+      ctx.font = '13px "Times New Roman", Times, serif';
+      ctx.fillText(`\u2190 ${(f*100).toFixed(0)}% H`, margin.left + plotW + 6, y + 4.5);
+    }
+  }
+
+  // Stats
+  document.getElementById('stats').innerHTML = `
+    Peak LAD: <span>${maxLAD.toFixed(4)} m² m⁻³</span> at height <span>${peakHeight.toFixed(1)} m</span><br>
+    Peak as fraction of canopy height: <span>~${((peakHeight / meanCanopyH) * 100).toFixed(0)}%</span><br>
+    Integrated LAI (∫LAD dz): <span>${profile.totalLAI.toFixed(2)}</span><br>
+    Leaf area per point: <span>${ACTUAL_LEAF_AREA.toFixed(4)} m²</span> &nbsp;|&nbsp;
+    Ground area: <span>${GROUND_AREA.toLocaleString()} m²</span> &nbsp;|&nbsp;
+    Height bin: <span>${profile.binSize} m</span><br>
+    Total leaf points: <span>${profile.leafHeights_count.toLocaleString()}</span> &nbsp;|&nbsp;
+    Trees: <span>${profile.treeCount}</span>
+  `;
+}
+
+// ==================== RUN ====================
+const { leafHeights, trees } = generateLeafHeights();
+const profile = computeProfile(leafHeights);
+profile.leafHeights_count = leafHeights.length;
+profile.treeCount = trees.length;
+drawChart(profile);
+</script>
+</body>
+</html>

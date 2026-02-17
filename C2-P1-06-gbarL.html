@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leaf Normal Inclination Distribution — ḡL(θL) (Dark)</title>
+<style>
+  body {
+    margin: 0; padding: 40px 20px;
+    background: #0a0a0f;
+    font-family: 'Times New Roman', Georgia, serif;
+    display: flex; justify-content: center;
+  }
+  .wrap { max-width: 780px; width: 100%; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="plot" width="720" height="500"></canvas>
+</div>
+<script>
+const PI = Math.PI;
+const TAU = PI * 2;
+const canvas = document.getElementById("plot");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+const ml = 68, mr = 20, mt = 20, mb = 70;
+const pw = W - ml - mr, ph = H - mt - mb;
+const xMin = 0, xMax = 90, yMin = 0, yMax = 1.4;
+
+function toX(deg){ return ml + (deg - xMin)/(xMax - xMin)*pw; }
+function toY(val){ return mt + ph - (val - yMin)/(yMax - yMin)*ph; }
+
+// Brightened colors for dark background
+const distributions = [
+  { label:"(2) planophile",   fn: t => (2/PI)*(1+Math.cos(2*t)),     color:"#ff5050", lineW:2.5, dash:[] },
+  { label:"(3) erectophile",  fn: t => (2/PI)*(1-Math.cos(2*t)),     color:"#5e9eff", lineW:2.5, dash:[], marker:"filled" },
+  { label:"(4) plagiophile",  fn: t => (2/PI)*(1-Math.cos(4*t)),     color:"#50d868", lineW:2.5, dash:[10,5] },
+  { label:"(5) extremophile", fn: t => (2/PI)*(1+Math.cos(4*t)),     color:"#f0b030", lineW:2.2, dash:[6,4], marker:"open" },
+  { label:"(6) spherical",    fn: t => Math.sin(t),                   color:"#e0e0e8", lineW:2.8, dash:[14,4,3,4] },
+  { label:"(1) uniform",      fn: t => 2/PI,                          color:"#c0c0c8", lineW:2.0, dash:[3,5] },
+];
+
+const BG = "#0a0a0f";
+const FG = "#d0d8e0";
+
+// ── Background ──
+ctx.fillStyle = BG;
+ctx.fillRect(0, 0, W, H);
+
+// ── Grid lines ──
+ctx.strokeStyle = "#1e2230";
+ctx.lineWidth = 0.5;
+for(let y = 0; y <= yMax; y += 0.2){
+  if(Math.abs(y) < 0.01) continue;
+  ctx.beginPath(); ctx.moveTo(ml, toY(y)); ctx.lineTo(ml+pw, toY(y)); ctx.stroke();
+}
+for(let x = 0; x <= 90; x += 15){
+  if(x === 0) continue;
+  ctx.beginPath(); ctx.moveTo(toX(x), mt); ctx.lineTo(toX(x), mt+ph); ctx.stroke();
+}
+
+// ── Axes ──
+ctx.strokeStyle = FG;
+ctx.lineWidth = 1.5;
+ctx.setLineDash([]);
+ctx.beginPath();
+ctx.moveTo(ml, mt); ctx.lineTo(ml, mt+ph); ctx.lineTo(ml+pw, mt+ph);
+ctx.stroke();
+ctx.lineWidth = 0.8;
+ctx.beginPath();
+ctx.moveTo(ml, mt); ctx.lineTo(ml+pw, mt); ctx.lineTo(ml+pw, mt+ph);
+ctx.stroke();
+
+// ── Tick marks & labels — X ──
+ctx.fillStyle = FG;
+ctx.lineWidth = 1.2;
+ctx.font = "15px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center";
+ctx.textBaseline = "top";
+for(let x = 0; x <= 90; x += 15){
+  const px = toX(x);
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(px, mt+ph); ctx.lineTo(px, mt+ph+6); ctx.stroke();
+  ctx.fillText(x.toString(), px, mt+ph+9);
+}
+
+// ── Tick marks & labels — Y ──
+ctx.textAlign = "right";
+ctx.textBaseline = "middle";
+for(let yi = 0; yi <= 7; yi++){
+  const y = yi * 0.2;
+  const py = toY(y);
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(ml, py); ctx.lineTo(ml-6, py); ctx.stroke();
+  ctx.fillText(y.toFixed(1), ml-9, py);
+}
+
+// ── X-axis label ──
+ctx.setLineDash([]);
+ctx.font = "bold 17px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center";
+ctx.textBaseline = "top";
+ctx.fillText("Leaf inclination in degrees", ml + pw/2, mt+ph+38);
+
+// ── Y-axis label ──
+ctx.save();
+ctx.translate(16, mt + ph/2);
+ctx.rotate(-PI/2);
+ctx.font = "bold 20px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center";
+ctx.textBaseline = "middle";
+ctx.fillText("ḡ", 0, 0);
+ctx.font = "bold 14px 'Times New Roman', Georgia, serif";
+ctx.fillText("L", 11, 5);
+ctx.font = "bold 20px 'Times New Roman', Georgia, serif";
+ctx.fillText("(θ )", 32, 0);
+ctx.font = "bold 14px 'Times New Roman', Georgia, serif";
+ctx.fillText("L", 36, 5);
+ctx.restore();
+
+// ── Plot curves ──
+const N = 600;
+distributions.forEach((d, idx) => {
+  ctx.strokeStyle = d.color;
+  ctx.lineWidth = d.lineW;
+  ctx.setLineDash(d.dash);
+  ctx.beginPath();
+  for(let i = 0; i <= N; i++){
+    const deg = (i/N)*90;
+    const theta = deg/180*PI;
+    const val = d.fn(theta);
+    const px = toX(deg), py = toY(val);
+    if(i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if(d.marker){
+    for(let i = 0; i <= N; i += Math.floor(N/13)){
+      const deg = (i/N)*90;
+      const theta = deg/180*PI;
+      const val = d.fn(theta);
+      const px = toX(deg), py = toY(val);
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, TAU);
+      if(d.marker === "filled"){
+        ctx.fillStyle = d.color;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = d.color;
+        ctx.lineWidth = 1.8;
+        ctx.fillStyle = BG;
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+});
+
+// ── Curve labels ──
+ctx.setLineDash([]);
+const labels = [
+  { text:"(2) planophile",   deg:20, fn: distributions[0].fn, color:distributions[0].color, offX:8,  offY:14 },
+  { text:"(3) erectophile",  deg:62, fn: distributions[1].fn, color:distributions[1].color, offX:6,  offY:-12 },
+  { text:"(4) plagiophile",  deg:42, fn: distributions[2].fn, color:distributions[2].color, offX:6,  offY:-18 },
+  { text:"(5) extremophile", deg:20, fn: distributions[3].fn, color:distributions[3].color, offX:8,  offY:-12 },
+  { text:"(6) spherical",    deg:68, fn: distributions[4].fn, color:distributions[4].color, offX:6,  offY:14 },
+  { text:"(1) uniform",      deg:52, fn: distributions[5].fn, color:distributions[5].color, offX:4,  offY:-14 },
+];
+ctx.font = "bold 13px 'Times New Roman', Georgia, serif";
+labels.forEach(lp => {
+  const theta = lp.deg/180*PI;
+  const val = lp.fn(theta);
+  const px = toX(lp.deg) + lp.offX;
+  const py = toY(val) + lp.offY;
+  ctx.fillStyle = lp.color;
+  ctx.textAlign = "left";
+  ctx.fillText(lp.text, px, py);
+});
+</script>
+</body>
+</html>

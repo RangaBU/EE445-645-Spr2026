@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spatial Distribution of Leaf Area Index (LAI)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #fff;
+    font-family: 'Times New Roman', Times, serif;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+  }
+  h1 { font-size: 17px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #111; font-style: italic; margin-bottom: 20px; }
+  .panel-title { font-size: 15px; font-weight: 700; margin: 18px 0 8px 0; }
+  canvas { display: block; }
+  #canvas2d { border: 1px solid #ccc; }
+  #container3d { width: 900px; height: 480px; border: 1px solid #333; cursor: grab; position: relative; background: #000; }
+  #container3d:active { cursor: grabbing; }
+  #stats {
+    margin-top: 16px; font-size: 13px; color: #000; text-align: center; line-height: 2.0;
+  }
+  #stats span { font-weight: 700; }
+  #instructions3d {
+    font-size: 11px; color: #666; margin-top: 4px; font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<h1>Spatial Distribution of Leaf Area Index</h1>
+<p class="subtitle">Column-integrated one-sided leaf area per unit ground area (m² m⁻²)</p>
+
+<p class="panel-title">(a) 2D Contour Map</p>
+<canvas id="canvas2d" width="900" height="420"></canvas>
+
+<p class="panel-title">(b) 3D Surface</p>
+<div id="container3d"><canvas id="canvas3d"></canvas></div>
+<p id="instructions3d">Drag to rotate · Scroll to zoom · Right-drag to pan</p>
+
+<div id="stats"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ==================== FOREST GENERATION (identical RNG) ====================
+const WORLD_X = 120, WORLD_Z = 60;
+const GROUND_AREA = WORLD_X * WORLD_Z;
+const TARGET_LAI = 4.0;
+const PRACTICAL_LEAF_TARGET = 700000;
+const ACTUAL_LEAF_AREA = (TARGET_LAI * GROUND_AREA) / PRACTICAL_LEAF_TARGET;
+
+function mulberry32(a) {
+  return function() { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+}
+const rng = mulberry32(314159);
+
+const SPECIES = [
+  { name:'Oak',minH:22,maxH:38,crownShape:'round',crownSpread:[6,10],trunkR:[0.3,0.6],canopyBase:[0.45,0.55],leafDensity:1.0 },
+  { name:'Maple',minH:18,maxH:30,crownShape:'round',crownSpread:[5,8],trunkR:[0.25,0.45],canopyBase:[0.4,0.55],leafDensity:1.05 },
+  { name:'Beech',minH:25,maxH:40,crownShape:'columnar',crownSpread:[5,9],trunkR:[0.3,0.55],canopyBase:[0.4,0.5],leafDensity:0.95 },
+  { name:'Birch',minH:14,maxH:24,crownShape:'oval',crownSpread:[3,6],trunkR:[0.12,0.25],canopyBase:[0.35,0.5],leafDensity:0.7 },
+  { name:'Ash',minH:20,maxH:35,crownShape:'round',crownSpread:[5,9],trunkR:[0.25,0.5],canopyBase:[0.45,0.6],leafDensity:0.85 },
+  { name:'Hickory',minH:20,maxH:32,crownShape:'oval',crownSpread:[4,7],trunkR:[0.2,0.4],canopyBase:[0.5,0.6],leafDensity:0.9 },
+  { name:'Elm',minH:18,maxH:30,crownShape:'vase',crownSpread:[6,10],trunkR:[0.3,0.55],canopyBase:[0.35,0.5],leafDensity:1.0 },
+  { name:'Poplar',minH:20,maxH:35,crownShape:'columnar',crownSpread:[3,5],trunkR:[0.2,0.4],canopyBase:[0.3,0.45],leafDensity:0.8 },
+  { name:'Linden',minH:18,maxH:30,crownShape:'round',crownSpread:[5,8],trunkR:[0.25,0.45],canopyBase:[0.35,0.5],leafDensity:1.1 },
+  { name:'Walnut',minH:16,maxH:28,crownShape:'round',crownSpread:[5,9],trunkR:[0.25,0.5],canopyBase:[0.4,0.55],leafDensity:0.85 },
+];
+
+function terrainY(x, z) {
+  return Math.sin(x * 0.025) * 1.5 + Math.cos(z * 0.04) * 1.0 + Math.sin((x + z) * 0.015) * 0.8;
+}
+
+// Generate leaf XZ positions (we only need horizontal coords for LAI map)
+function generateLeafPositionsXZ() {
+  const leafXZ = []; // [x, z] pairs
+
+  const targetTrees = Math.round(700 * GROUND_AREA / 10000);
+  const trees = [];
+  const minDist = 2.5;
+  let attempts = 0;
+  while (trees.length < targetTrees && attempts < targetTrees * 15) {
+    attempts++;
+    const x = (rng() - 0.5) * (WORLD_X - 4);
+    const z = (rng() - 0.5) * (WORLD_Z - 4);
+    let ok = true;
+    for (const t of trees) { if (Math.hypot(t.x - x, t.z - z) < minDist) { ok = false; break; } }
+    if (!ok) continue;
+    const sp = SPECIES[Math.floor(rng() * SPECIES.length)];
+    const height = sp.minH + rng() * (sp.maxH - sp.minH);
+    const canopyBaseRatio = sp.canopyBase[0] + rng() * (sp.canopyBase[1] - sp.canopyBase[0]);
+    const crownRadius = sp.crownSpread[0] + rng() * (sp.crownSpread[1] - sp.crownSpread[0]);
+    const trunkR = sp.trunkR[0] + rng() * (sp.trunkR[1] - sp.trunkR[0]);
+    trees.push({ x, z, height, canopyStart: height * canopyBaseRatio, crownRadius, trunkR,
+      crownShape: sp.crownShape, leafDensity: sp.leafDensity, lean: (rng()-0.5)*0.02 });
+  }
+
+  // Ground — consume RNG
+  const groundPts = Math.floor(GROUND_AREA * 0.25);
+  for (let i = 0; i < groundPts; i++) { rng(); rng(); rng(); }
+
+  // Crown weights
+  let totalCrownWeight = 0;
+  trees.forEach(t => {
+    const crownH = t.height - t.canopyStart;
+    t._weight = (4/3) * Math.PI * t.crownRadius * t.crownRadius * (crownH/2) * t.leafDensity;
+    totalCrownWeight += t._weight;
+  });
+  const understoryLeafBudget = Math.floor(PRACTICAL_LEAF_TARGET * 0.08);
+  const canopyLeafBudget = PRACTICAL_LEAF_TARGET - understoryLeafBudget;
+
+  // Trees
+  trees.forEach(tree => {
+    const crownH = tree.height - tree.canopyStart;
+
+    // Trunk — consume RNG
+    const trunkPts = 40 + Math.floor(rng() * 40);
+    for (let i = 0; i < trunkPts; i++) { rng(); rng(); rng(); }
+
+    // Branches — consume RNG
+    const branchCount = 3 + Math.floor(rng() * 5);
+    for (let b = 0; b < branchCount; b++) {
+      rng(); rng(); rng();
+      const bPts = 8 + Math.floor(rng() * 10);
+      for (let i = 0; i < bPts; i++) { rng(); rng(); rng(); }
+    }
+
+    // Canopy leaves
+    const thisTreeLeaves = Math.floor(canopyLeafBudget * (tree._weight / totalCrownWeight));
+    for (let i = 0; i < thisTreeLeaves; i++) {
+      // Beta-like height (3 rng calls)
+      const u = rng(), u2 = rng(), u3 = rng();
+      let nh = 0.3 * u + 0.35 * u2 + 0.35 * u3;
+      nh = nh * 0.75 + 0.2;
+      nh = Math.max(0, Math.min(1, nh));
+      const ch = tree.canopyStart + nh * crownH;
+
+      // maxR (1 rng call)
+      let maxR;
+      switch (tree.crownShape) {
+        case 'round': maxR = tree.crownRadius * Math.sin(nh * Math.PI) * (0.5 + rng() * 0.6); break;
+        case 'columnar': maxR = tree.crownRadius * 0.55 * (0.6 + rng() * 0.5) * (1 - Math.pow(Math.abs(nh-0.5)*2,2)*0.3); break;
+        case 'oval': maxR = tree.crownRadius * 0.75 * Math.sin(nh * Math.PI * 0.85 + 0.25) * (0.5 + rng() * 0.55); break;
+        case 'vase': { const spread = 0.4 + nh * 0.6; maxR = tree.crownRadius * spread * (0.5 + rng() * 0.6); break; }
+        default: maxR = tree.crownRadius * Math.sin(nh * Math.PI) * (0.5 + rng() * 0.55);
+      }
+
+      const angle = rng() * Math.PI * 2;
+      const r = maxR * Math.pow(rng(), 0.42);
+      const nx = Math.sin(angle * 4 + ch * 0.4) * 0.5;
+      const nz = Math.cos(angle * 3 + ch * 0.6) * 0.5;
+
+      const lx = tree.x + Math.cos(angle) * r + nx * 0.25 + tree.lean * ch;
+      const lz = tree.z + Math.sin(angle) * r + nz * 0.25;
+      rng(); // y noise
+
+      leafXZ.push(lx, lz);
+    }
+  });
+
+  // Understory
+  const plantCount = 600;
+  const ptsPerPlant = Math.floor(understoryLeafBudget / plantCount);
+  let understoryUsed = 0;
+
+  for (let p = 0; p < plantCount && understoryUsed < understoryLeafBudget; p++) {
+    const px = (rng() - 0.5) * (WORLD_X - 2);
+    const pz = (rng() - 0.5) * (WORLD_Z - 2);
+    const gy = terrainY(px, pz);
+    const kind = rng();
+    const budget = Math.min(ptsPerPlant, understoryLeafBudget - understoryUsed);
+
+    if (kind < 0.2) {
+      const h = 0.4 + rng() * 0.9;
+      const fronds = 5 + Math.floor(rng() * 6);
+      const ptsUsed = Math.min(budget, fronds * 8);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fa = (i / ptsUsed) * Math.PI * 2 + rng() * 0.2;
+        const t = rng();
+        leafXZ.push(px + Math.cos(fa) * 0.6 * t, pz + Math.sin(fa) * 0.6 * t);
+        understoryUsed++;
+      }
+    } else if (kind < 0.4) {
+      const h = 0.8 + rng() * 2.5;
+      const rad = 0.6 + rng() * 1.5;
+      const ptsUsed = Math.min(budget, 80);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const fh = rng() * h;
+        const r2 = rad * Math.sin((fh/h) * Math.PI) * (0.4 + rng() * 0.6);
+        leafXZ.push(px + Math.cos(a) * r2, pz + Math.sin(a) * r2);
+        understoryUsed++;
+      }
+    } else if (kind < 0.55) {
+      const h = 2 + rng() * 5;
+      const cBase = h * 0.35;
+      const cRad = 0.8 + rng() * 1.5;
+      for (let i = 0; i < 6; i++) { rng(); rng(); }
+      const ptsUsed = Math.min(budget, 70);
+      for (let i = 0; i < ptsUsed; i++) {
+        const fh = cBase + rng() * (h - cBase);
+        rng();
+        const a = rng() * Math.PI * 2;
+        leafXZ.push(px + Math.cos(a) * cRad * 0.5, pz + Math.sin(a) * cRad * 0.5);
+        understoryUsed++;
+      }
+    } else if (kind < 0.7) {
+      const h = 0.2 + rng() * 0.5;
+      const spread = 0.3 + rng() * 0.4;
+      const ptsUsed = Math.min(budget, 20);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const r2 = spread * Math.sqrt(rng());
+        rng(); // height
+        leafXZ.push(px + Math.cos(a) * r2, pz + Math.sin(a) * r2);
+        understoryUsed++;
+      }
+    } else if (kind < 0.85) {
+      const spread = 0.5 + rng() * 1.2;
+      const ptsUsed = Math.min(budget, 30);
+      for (let i = 0; i < ptsUsed; i++) {
+        const a = rng() * Math.PI * 2;
+        const r2 = spread * Math.sqrt(rng());
+        rng();
+        leafXZ.push(px + Math.cos(a) * r2, pz + Math.sin(a) * r2);
+        understoryUsed++;
+      }
+    } else {
+      const len = 1 + rng() * 3;
+      rng(); // logA
+      const ptsUsed = Math.min(budget, 15);
+      for (let i = 0; i < ptsUsed; i++) { rng(); rng(); rng(); }
+    }
+  }
+
+  return { leafXZ, leafCount: leafXZ.length / 2, trees };
+}
+
+// ==================== COMPUTE LAI GRID ====================
+function computeLAIGrid(leafXZ, leafCount) {
+  const cellSize = 2.0; // meters
+  const nx = Math.ceil(WORLD_X / cellSize);
+  const nz = Math.ceil(WORLD_Z / cellSize);
+  const grid = new Float64Array(nx * nz);
+
+  for (let i = 0; i < leafCount; i++) {
+    const x = leafXZ[i * 2];
+    const z = leafXZ[i * 2 + 1];
+    const ix = Math.floor((x + WORLD_X / 2) / cellSize);
+    const iz = Math.floor((z + WORLD_Z / 2) / cellSize);
+    if (ix >= 0 && ix < nx && iz >= 0 && iz < nz) {
+      grid[iz * nx + ix] += ACTUAL_LEAF_AREA / (cellSize * cellSize);
+    }
+  }
+
+  let maxLAI = 0, sumLAI = 0, countNonZero = 0;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] > maxLAI) maxLAI = grid[i];
+    if (grid[i] > 0) { sumLAI += grid[i]; countNonZero++; }
+  }
+
+  return { grid, nx, nz, cellSize, maxLAI, meanLAI: sumLAI / countNonZero, globalMean: sumLAI / (nx * nz) };
+}
+
+// ==================== LAI COLORMAP (green-yellow-red, print friendly) ====================
+function laiToColor(normalized) {
+  const t = Math.max(0, Math.min(1, normalized));
+  let r, g, b;
+  if (t < 0.15) {
+    // White to light blue
+    const s = t / 0.15;
+    r = 1.0 - s * 0.15; g = 1.0 - s * 0.05; b = 1.0;
+  } else if (t < 0.3) {
+    // Light blue to green
+    const s = (t - 0.15) / 0.15;
+    r = 0.85 - s * 0.65; g = 0.95 - s * 0.15; b = 1.0 - s * 0.6;
+  } else if (t < 0.5) {
+    // Green to yellow-green
+    const s = (t - 0.3) / 0.2;
+    r = 0.2 + s * 0.6; g = 0.8 + s * 0.1; b = 0.4 - s * 0.3;
+  } else if (t < 0.7) {
+    // Yellow-green to orange
+    const s = (t - 0.5) / 0.2;
+    r = 0.8 + s * 0.15; g = 0.9 - s * 0.35; b = 0.1 - s * 0.05;
+  } else if (t < 0.85) {
+    // Orange to red
+    const s = (t - 0.7) / 0.15;
+    r = 0.95; g = 0.55 - s * 0.35; b = 0.05;
+  } else {
+    // Red to dark red
+    const s = (t - 0.85) / 0.15;
+    r = 0.95 - s * 0.2; g = 0.2 - s * 0.15; b = 0.05;
+  }
+  return { r, g, b };
+}
+
+// ==================== 2D CONTOUR MAP ====================
+function draw2DContour(laiData) {
+  const { grid, nx, nz, cellSize, maxLAI } = laiData;
+  const canvas = document.getElementById('canvas2d');
+  const W = 900, H = 420;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const margin = { top: 20, right: 90, bottom: 50, left: 65 };
+  const plotW = W - margin.left - margin.right;
+  const plotH = H - margin.top - margin.bottom;
+
+  // Background
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw cells
+  const cellW = plotW / nx;
+  const cellH = plotH / nz;
+
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const val = grid[iz * nx + ix];
+      const n = val / maxLAI;
+      const c = laiToColor(n);
+      ctx.fillStyle = `rgb(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)})`;
+      ctx.fillRect(margin.left + ix * cellW, margin.top + (nz - 1 - iz) * cellH, cellW + 0.5, cellH + 0.5);
+    }
+  }
+
+  // Contour lines — draw isolines at fixed LAI values
+  const contourLevels = [];
+  const step = maxLAI > 10 ? 2 : maxLAI > 5 ? 1 : 0.5;
+  for (let v = step; v < maxLAI; v += step) contourLevels.push(v);
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 0.7;
+
+  // Simple marching squares for each contour level
+  for (const level of contourLevels) {
+    for (let iz = 0; iz < nz - 1; iz++) {
+      for (let ix = 0; ix < nx - 1; ix++) {
+        const v00 = grid[iz * nx + ix];
+        const v10 = grid[iz * nx + ix + 1];
+        const v01 = grid[(iz+1) * nx + ix];
+        const v11 = grid[(iz+1) * nx + ix + 1];
+
+        // Which corners are above the level?
+        const b = ((v00 >= level) ? 1 : 0) | ((v10 >= level) ? 2 : 0) |
+                  ((v11 >= level) ? 4 : 0) | ((v01 >= level) ? 8 : 0);
+        if (b === 0 || b === 15) continue;
+
+        // Interpolation helpers
+        const px = x => margin.left + x * cellW;
+        const py = y => margin.top + (nz - 1 - y) * cellH;
+        const lerp = (a, b2, va, vb) => a + (level - va) / (vb - va) * (b2 - a);
+
+        // Edge midpoints
+        const eBot = [lerp(ix, ix+1, v00, v10), iz];
+        const eRight = [ix+1, lerp(iz, iz+1, v10, v11)];
+        const eTop = [lerp(ix, ix+1, v01, v11), iz+1];
+        const eLeft = [ix, lerp(iz, iz+1, v00, v01)];
+
+        const segments = [];
+        switch(b) {
+          case 1: case 14: segments.push([eBot, eLeft]); break;
+          case 2: case 13: segments.push([eBot, eRight]); break;
+          case 3: case 12: segments.push([eLeft, eRight]); break;
+          case 4: case 11: segments.push([eRight, eTop]); break;
+          case 5: segments.push([eBot, eRight], [eLeft, eTop]); break;
+          case 6: case 9: segments.push([eBot, eTop]); break;
+          case 7: case 8: segments.push([eLeft, eTop]); break;
+          case 10: segments.push([eBot, eLeft], [eRight, eTop]); break;
+        }
+
+        for (const seg of segments) {
+          ctx.beginPath();
+          ctx.moveTo(px(seg[0][0]), py(seg[0][1]));
+          ctx.lineTo(px(seg[1][0]), py(seg[1][1]));
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Axes frame
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+
+  // X ticks
+  ctx.font = '12px "Times New Roman", Times, serif';
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'center';
+  const xTickStep = 20;
+  for (let x = 0; x <= WORLD_X; x += xTickStep) {
+    const px2 = margin.left + (x / WORLD_X) * plotW;
+    ctx.beginPath(); ctx.moveTo(px2, margin.top + plotH); ctx.lineTo(px2, margin.top + plotH + 5); ctx.stroke();
+    ctx.fillText((x - WORLD_X/2).toFixed(0), px2, margin.top + plotH + 18);
+  }
+
+  // Y ticks (Z in world = depth)
+  ctx.textAlign = 'right';
+  const yTickStep = 10;
+  for (let z = 0; z <= WORLD_Z; z += yTickStep) {
+    const py2 = margin.top + plotH - (z / WORLD_Z) * plotH;
+    ctx.beginPath(); ctx.moveTo(margin.left - 5, py2); ctx.lineTo(margin.left, py2); ctx.stroke();
+    ctx.fillText((z - WORLD_Z/2).toFixed(0), margin.left - 8, py2 + 4);
+  }
+
+  // Axis labels
+  ctx.font = 'bold 14px "Times New Roman", Times, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('X (m)', margin.left + plotW / 2, H - 8);
+  ctx.save();
+  ctx.translate(14, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Y (m)', 0, 0);
+  ctx.restore();
+
+  // Colorbar
+  const cbX = margin.left + plotW + 15;
+  const cbW = 18;
+  const cbH = plotH;
+  for (let i = 0; i < cbH; i++) {
+    const t = 1 - i / (cbH - 1);
+    const c = laiToColor(t);
+    ctx.fillStyle = `rgb(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)})`;
+    ctx.fillRect(cbX, margin.top + i, cbW, 1.5);
+  }
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cbX, margin.top, cbW, cbH);
+
+  // Colorbar ticks
+  ctx.font = '11px "Times New Roman", Times, serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#000';
+  const cbTicks = 6;
+  for (let i = 0; i <= cbTicks; i++) {
+    const frac = i / cbTicks;
+    const val = maxLAI * frac;
+    const yp = margin.top + cbH - frac * cbH;
+    ctx.beginPath(); ctx.moveTo(cbX + cbW, yp); ctx.lineTo(cbX + cbW + 4, yp); ctx.stroke();
+    ctx.fillText(val.toFixed(1), cbX + cbW + 6, yp + 4);
+  }
+
+  // Colorbar title
+  ctx.save();
+  ctx.translate(cbX + cbW + 50, margin.top + cbH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = 'bold 12px "Times New Roman", Times, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('LAI (m\u00B2 m\u207B\u00B2)', 0, 0);
+  ctx.restore();
+}
+
+// ==================== 3D SURFACE ====================
+function draw3DSurface(laiData) {
+  const { grid, nx, nz, cellSize, maxLAI } = laiData;
+  const container = document.getElementById('container3d');
+  const W = 900, H = 480;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080810);
+
+  const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 2000);
+  const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // Build surface mesh
+  const scaleX = 100 / nx;
+  const scaleZ = 50 / nz;
+  const heightScale = 25 / maxLAI;
+
+  const geometry = new THREE.PlaneGeometry(100, 50, nx - 1, nz - 1);
+  const positions = geometry.attributes.position;
+  const colors = new Float32Array(positions.count * 3);
+
+  for (let i = 0; i < positions.count; i++) {
+    // PlaneGeometry is in XY, we rotate it to XZ
+    const ix = i % nx;
+    const iz = Math.floor(i / nx);
+    const izFlipped = nz - 1 - iz;
+
+    const val = grid[izFlipped * nx + ix];
+    const h = val * heightScale;
+
+    positions.setZ(i, h);
+
+    const c = laiToColor(val / maxLAI);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshPhongMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    shininess: 30,
+    flatShading: false,
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  scene.add(mesh);
+
+  // Wireframe overlay
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.05 });
+  const wireMesh = new THREE.Mesh(geometry.clone(), wireMat);
+  wireMesh.rotation.x = -Math.PI / 2;
+  scene.add(wireMesh);
+
+  // Ground plane
+  const groundGeo = new THREE.PlaneGeometry(110, 60);
+  const groundMat = new THREE.MeshBasicMaterial({ color: 0x111118, side: THREE.DoubleSide });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.5;
+  scene.add(ground);
+
+  // Axes
+  function makeLine(p1, p2, color) {
+    const g = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+    return new THREE.Line(g, new THREE.LineBasicMaterial({ color }));
+  }
+
+  // X axis (red)
+  scene.add(makeLine(new THREE.Vector3(-50, 0, 25), new THREE.Vector3(50, 0, 25), 0xff6655));
+  // Y axis (blue) — depth
+  scene.add(makeLine(new THREE.Vector3(-50, 0, 25), new THREE.Vector3(-50, 0, -25), 0x5599ff));
+  // Z axis (green) — vertical
+  scene.add(makeLine(new THREE.Vector3(-50, 0, 25), new THREE.Vector3(-50, maxLAI * heightScale + 5, 25), 0x55ff77));
+
+  // Axis labels as sprites
+  function makeLabel(text, pos, color) {
+    const c2 = document.createElement('canvas');
+    c2.width = 512; c2.height = 96;
+    const ct = c2.getContext('2d');
+    ct.font = 'bold 48px "Times New Roman", Times, serif';
+    ct.fillStyle = color;
+    ct.textAlign = 'center';
+    ct.textBaseline = 'middle';
+    ct.fillText(text, 256, 48);
+    const tex = new THREE.CanvasTexture(c2);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const s = new THREE.Sprite(mat);
+    s.position.copy(pos);
+    s.scale.set(16, 3.5, 1);
+    return s;
+  }
+
+  scene.add(makeLabel('X (m)', new THREE.Vector3(0, -3, 30), '#ff8877'));
+  scene.add(makeLabel('Y (m)', new THREE.Vector3(-55, -3, 0), '#77bbff'));
+  scene.add(makeLabel('LAI', new THREE.Vector3(-57, maxLAI * heightScale / 2, 25), '#77ff99'));
+
+  // Tick labels along Z (height = LAI values)
+  function makeTickLabel(text, pos, color) {
+    const c2 = document.createElement('canvas');
+    c2.width = 192; c2.height = 64;
+    const ct = c2.getContext('2d');
+    ct.font = 'bold 38px "Times New Roman", Times, serif';
+    ct.fillStyle = color;
+    ct.textAlign = 'center';
+    ct.textBaseline = 'middle';
+    ct.fillText(text, 96, 32);
+    const tex = new THREE.CanvasTexture(c2);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const s = new THREE.Sprite(mat);
+    s.position.copy(pos);
+    s.scale.set(8, 2.8, 1);
+    return s;
+  }
+
+  // LAI ticks on vertical axis
+  for (let v = 0; v <= maxLAI; v += (maxLAI > 8 ? 2 : 1)) {
+    const y = v * heightScale;
+    scene.add(makeLine(
+      new THREE.Vector3(-50, y, 25),
+      new THREE.Vector3(-51.5, y, 25),
+      0x55ff77
+    ));
+    scene.add(makeTickLabel(v.toFixed(0), new THREE.Vector3(-55, y, 25), '#77ff99'));
+  }
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(30, 50, 20);
+  scene.add(dirLight);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dirLight2.position.set(-30, 30, -20);
+  scene.add(dirLight2);
+
+  // Camera orbit
+  let isDragging = false, isRightDrag = false, prevMouse = { x: 0, y: 0 };
+  let spherical = { theta: 0.6, phi: Math.PI / 3.5, radius: 90 };
+  let camTarget = new THREE.Vector3(0, 8, 0);
+
+  function updateCamera() {
+    camera.position.set(
+      camTarget.x + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta),
+      camTarget.y + spherical.radius * Math.cos(spherical.phi),
+      camTarget.z + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta)
+    );
+    camera.lookAt(camTarget);
+  }
+
+  container.addEventListener('mousedown', e => {
+    if (e.target !== renderer.domElement) return;
+    isDragging = true; isRightDrag = e.button === 2;
+    prevMouse = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+    if (isRightDrag) {
+      const r = new THREE.Vector3();
+      r.crossVectors(camera.getWorldDirection(new THREE.Vector3()), new THREE.Vector3(0,1,0)).normalize();
+      camTarget.addScaledVector(r, -dx * 0.06);
+      camTarget.y += dy * 0.06;
+    } else {
+      spherical.theta -= dx * 0.005;
+      spherical.phi = Math.max(0.15, Math.min(Math.PI - 0.15, spherical.phi + dy * 0.005));
+    }
+    prevMouse = { x: e.clientX, y: e.clientY };
+    updateCamera();
+  });
+  window.addEventListener('mouseup', () => isDragging = false);
+  container.addEventListener('contextmenu', e => e.preventDefault());
+  container.addEventListener('wheel', e => {
+    spherical.radius = Math.max(20, Math.min(250, spherical.radius + e.deltaY * 0.06));
+    updateCamera();
+  });
+
+  updateCamera();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+// ==================== RUN ====================
+const { leafXZ, leafCount, trees } = generateLeafPositionsXZ();
+const laiData = computeLAIGrid(leafXZ, leafCount);
+
+draw2DContour(laiData);
+draw3DSurface(laiData);
+
+// Stats
+const meanAll = laiData.globalMean;
+document.getElementById('stats').innerHTML = `
+  Grid cell: <span>${laiData.cellSize} \u00D7 ${laiData.cellSize} m</span> &nbsp;|&nbsp;
+  Grid: <span>${laiData.nx} \u00D7 ${laiData.nz}</span> cells &nbsp;|&nbsp;
+  Max LAI: <span>${laiData.maxLAI.toFixed(2)}</span> &nbsp;|&nbsp;
+  Mean LAI (non-zero): <span>${laiData.meanLAI.toFixed(2)}</span> &nbsp;|&nbsp;
+  Global mean LAI: <span>${meanAll.toFixed(2)}</span><br>
+  Trees: <span>${trees.length}</span> &nbsp;|&nbsp;
+  Leaf points: <span>${leafCount.toLocaleString()}</span> &nbsp;|&nbsp;
+  Leaf area per point: <span>${ACTUAL_LEAF_AREA.toFixed(4)} m\u00B2</span> &nbsp;|&nbsp;
+  Ground area: <span>${GROUND_AREA.toLocaleString()} m\u00B2</span>
+`;
+</script>
+</body>
+</html>

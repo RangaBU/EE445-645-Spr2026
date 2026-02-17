@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heliotropic Leaf Azimuthal Distribution — hL(φL, φ) (Dark)</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{min-height:100vh;background:#0a0a0f;font-family:'EB Garamond',Georgia,serif;padding:32px 20px;display:flex;justify-content:center}
+  .container{max-width:1000px;width:100%}
+  .header{text-align:center;margin-bottom:24px}
+  .header h1{font-size:28px;font-weight:700;color:#e8ecf0;letter-spacing:-0.01em}
+  .header .sub{font-size:16px;color:#a0b0c0;margin-top:6px;font-style:italic;max-width:600px;margin-left:auto;margin-right:auto}
+  .eq-box{margin-top:10px;font-size:14px;color:#d0d8e0;font-family:'JetBrains Mono',monospace;background:#161620;display:inline-block;padding:8px 18px;border-radius:6px;border:1px solid #2a2a3a}
+  .main{display:flex;gap:20px;flex-wrap:wrap}
+  .panel{background:#161620;border-radius:12px;border:1px solid #2a2a3a;padding:16px;box-shadow:0 2px 12px rgba(0,0,0,0.3)}
+  .col-left{flex:1 1 400px;display:flex;flex-direction:column;gap:16px}
+  .col-right{flex:1 1 400px;display:flex;flex-direction:column;gap:16px}
+  .section-label{font-size:12px;font-weight:600;color:#d0d8e0;margin-bottom:8px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.08em}
+  .slider-row{margin-bottom:12px}
+  .slider-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+  .slider-label{font-size:15px;color:#c0cad8}
+  .slider-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600}
+  input[type=range]{width:100%}
+  .range-hints{display:flex;justify-content:space-between;font-size:10px;color:#7a8a9a;font-family:'JetBrains Mono',monospace}
+  .mode-btns{display:flex;gap:8px;margin-bottom:8px}
+  .mode-btn{flex:1;padding:10px 8px;font-size:14px;font-weight:600;font-family:'EB Garamond',Georgia,serif;border-radius:8px;cursor:pointer;transition:all 0.2s;text-align:center;border:2px solid #3a3a4a;background:#1e1e2a;color:#b0bcc8}
+  .mode-btn.active{border-width:2px}
+  .mode-desc{font-size:13px;color:#b0bcc8;font-style:italic;margin-top:4px;min-height:36px}
+  canvas{display:block}
+  svg{display:block}
+  .footer-eq{text-align:center;margin-top:20px;padding:12px 18px;background:#161620;border-radius:8px;border:1px solid #2a2a3a;font-size:13px;color:#b0bcc8;font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Heliotropic Leaf Azimuthal Distribution</h1>
+    <div class="sub">Modelling how leaves orient their azimuth relative to the solar direction — diaheliotropic leaves face the sun, paraheliotropic leaves turn away</div>
+    <div class="eq-box">
+      (1/2π) h<sub>L</sub>(φ<sub>L</sub>, φ) = (1/π) cos²(φ − φ<sub>L</sub> − η)
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="col-left">
+      <div class="panel">
+        <div class="section-label">Polar Distribution h<sub>L</sub>(φ<sub>L</sub>)</div>
+        <canvas id="polarCanvas" width="420" height="420"></canvas>
+      </div>
+      <div class="panel">
+        <div class="section-label">Cartesian View: (1/2π) h<sub>L</sub> vs φ<sub>L</sub></div>
+        <canvas id="cartCanvas" width="420" height="200"></canvas>
+      </div>
+    </div>
+
+    <div class="col-right">
+      <div class="panel">
+        <div class="section-label">Leaf Orientation Schematic</div>
+        <svg id="leafScene" viewBox="0 0 420 320" style="width:100%;height:auto"></svg>
+      </div>
+      <div class="panel">
+        <div class="section-label">Heliotropic Mode</div>
+        <div class="mode-btns">
+          <button class="mode-btn active" id="btnDia" onclick="setMode('dia')">Diaheliotropic<br><span style="font-size:11px;font-weight:400">η = 0</span></button>
+          <button class="mode-btn" id="btnPara" onclick="setMode('para')">Paraheliotropic<br><span style="font-size:11px;font-weight:400">η = π/2</span></button>
+          <button class="mode-btn" id="btnCustom" onclick="setMode('custom')">Custom η</button>
+        </div>
+        <div class="mode-desc" id="modeDesc">Diaheliotropic: leaves maximize projected area to the incident photon stream</div>
+      </div>
+      <div class="panel">
+        <div class="section-label">Parameters</div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Solar azimuth φ</span>
+            <span class="slider-val" id="phiSunVal" style="color:#f0b030">0°</span>
+          </div>
+          <input type="range" id="phiSunSlider" min="0" max="360" value="0" style="accent-color:#f0b030">
+          <div class="range-hints"><span>0°</span><span>360°</span></div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Phase offset η</span>
+            <span class="slider-val" id="etaVal" style="color:#5eaaff">0°</span>
+          </div>
+          <input type="range" id="etaSlider" min="0" max="180" value="0" style="accent-color:#5eaaff">
+          <div class="range-hints"><span>0° (diaheliotropic)</span><span>90° (paraheliotropic)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-eq">
+    η = 0 → diaheliotropic (maximize projected leaf area) &nbsp;|&nbsp; η = 0.5π → paraheliotropic (minimize projected leaf area)
+  </div>
+</div>
+
+<script>
+const PI = Math.PI, TAU = 2*PI;
+const BG = "#0a0a0f";
+const PANEL = "#161620";
+const FG = "#d0d8e0";
+const FG2 = "#a0b0c0";
+const GRID = "#1e2230";
+const SUN = "#f0b030";
+const CURVE = "#5eaaff";
+
+let phiSun = 0, eta = 0, mode = 'dia';
+
+function hL_norm(phiL){ return (1/PI)*Math.pow(Math.cos(phiSun - phiL - eta),2); }
+
+function drawPolar(){
+  const c = document.getElementById("polarCanvas");
+  const ctx = c.getContext("2d");
+  const W=c.width, H=c.height, cx=W/2, cy=H/2, R=160;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=PANEL; ctx.fillRect(0,0,W,H);
+
+  ctx.strokeStyle=GRID; ctx.lineWidth=0.6;
+  [0.25,0.5,0.75,1.0].forEach(r=>{ctx.beginPath();ctx.arc(cx,cy,R*r,0,TAU);ctx.stroke()});
+
+  ctx.strokeStyle="#1e2230"; ctx.lineWidth=0.5;
+  for(let i=0;i<12;i++){const a=i/12*TAU;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*R,cy-Math.sin(a)*R);ctx.stroke()}
+
+  ctx.fillStyle=FG2; ctx.font="11px 'JetBrains Mono',monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(let i=0;i<12;i++){
+    const deg=i*30, a=deg/180*PI;
+    ctx.fillText(deg+"\u00B0", cx+Math.cos(a)*(R+16), cy-Math.sin(a)*(R+16));
+  }
+
+  const maxH = 1/PI;
+  const scale = R / maxH * 0.9;
+  ctx.beginPath();
+  const N=360;
+  for(let i=0;i<=N;i++){
+    const phiL=i/N*TAU;
+    const val=hL_norm(phiL);
+    const r=val*scale;
+    const px=cx+Math.cos(phiL)*r, py=cy-Math.sin(phiL)*r;
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fillStyle="rgba(94,170,255,0.12)";
+  ctx.fill();
+  ctx.strokeStyle=CURVE; ctx.lineWidth=2.5;
+  ctx.stroke();
+
+  const sunX=cx+Math.cos(phiSun)*R*1.05, sunY=cy-Math.sin(phiSun)*R*1.05;
+  ctx.strokeStyle=SUN; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(sunX,sunY); ctx.stroke();
+  const aLen=12, aAng=0.3;
+  ctx.beginPath();
+  ctx.moveTo(sunX,sunY);
+  ctx.lineTo(sunX-aLen*Math.cos(phiSun-aAng), sunY+aLen*Math.sin(phiSun-aAng));
+  ctx.moveTo(sunX,sunY);
+  ctx.lineTo(sunX-aLen*Math.cos(phiSun+aAng), sunY+aLen*Math.sin(phiSun+aAng));
+  ctx.stroke();
+  ctx.fillStyle=SUN; ctx.font="bold 14px 'EB Garamond',serif";
+  ctx.fillText("\u03C6 (sun)", sunX+Math.cos(phiSun)*20, sunY-Math.sin(phiSun)*20);
+
+  const peakAz = phiSun - eta;
+  const pkX=cx+Math.cos(peakAz)*(R*0.85), pkY=cy-Math.sin(peakAz)*(R*0.85);
+  ctx.strokeStyle=CURVE; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(pkX,pkY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=CURVE; ctx.font="bold 12px 'EB Garamond',serif";
+  const lbX=cx+Math.cos(peakAz)*(R*0.55), lbY=cy-Math.sin(peakAz)*(R*0.55);
+  ctx.fillText("peak h\u2097", lbX+10, lbY-8);
+
+  if(Math.abs(eta)>0.03){
+    ctx.strokeStyle="#ff6060"; ctx.lineWidth=1.8; ctx.setLineDash([]);
+    ctx.beginPath();
+    const arcR=50;
+    const startA = -peakAz;
+    const endA = -phiSun;
+    ctx.arc(cx,cy,arcR, startA, endA, eta>0);
+    ctx.stroke();
+    const midA = -(peakAz+phiSun)/2;
+    ctx.fillStyle="#ff6060"; ctx.font="italic 14px 'EB Garamond',serif";
+    ctx.fillText("\u03B7", cx+Math.cos(-midA)*(arcR+12), cy+Math.sin(-midA)*(arcR+12));
+  }
+
+  ctx.fillStyle=FG; ctx.beginPath(); ctx.arc(cx,cy,3,0,TAU); ctx.fill();
+}
+
+function drawCartesian(){
+  const c = document.getElementById("cartCanvas");
+  const ctx = c.getContext("2d");
+  const W=c.width, H=c.height;
+  const ml=55,mr=15,mt=10,mb=40;
+  const pw=W-ml-mr, ph=H-mt-mb;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=PANEL; ctx.fillRect(0,0,W,H);
+
+  const yMax = 0.35;
+  function toX(deg){return ml+(deg/360)*pw}
+  function toY(val){return mt+ph-(val/yMax)*ph}
+
+  ctx.strokeStyle=GRID; ctx.lineWidth=0.5;
+  for(let y=0;y<=yMax;y+=0.05){ctx.beginPath();ctx.moveTo(ml,toY(y));ctx.lineTo(ml+pw,toY(y));ctx.stroke()}
+  for(let x=0;x<=360;x+=45){ctx.beginPath();ctx.moveTo(toX(x),mt);ctx.lineTo(toX(x),mt+ph);ctx.stroke()}
+
+  ctx.strokeStyle=FG; ctx.lineWidth=1.2; ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(ml,mt);ctx.lineTo(ml,mt+ph);ctx.lineTo(ml+pw,mt+ph);ctx.stroke();
+
+  ctx.fillStyle=FG; ctx.font="11px 'JetBrains Mono',monospace"; ctx.textAlign="center"; ctx.textBaseline="top";
+  for(let x=0;x<=360;x+=90){
+    const px=toX(x);
+    ctx.beginPath();ctx.moveTo(px,mt+ph);ctx.lineTo(px,mt+ph+4);ctx.stroke();
+    ctx.fillText(x+"\u00B0",px,mt+ph+6);
+  }
+  ctx.textAlign="right"; ctx.textBaseline="middle";
+  for(let y=0;y<=yMax;y+=0.1){
+    const py=toY(y);
+    ctx.beginPath();ctx.moveTo(ml,py);ctx.lineTo(ml-4,py);ctx.stroke();
+    ctx.fillText(y.toFixed(1),ml-6,py);
+  }
+
+  ctx.font="14px 'EB Garamond',serif"; ctx.textAlign="center"; ctx.textBaseline="top";
+  ctx.fillText("\u03C6\u2097 (degrees)",ml+pw/2,mt+ph+22);
+
+  ctx.save(); ctx.translate(14,mt+ph/2); ctx.rotate(-PI/2);
+  ctx.font="14px 'EB Garamond',serif"; ctx.textAlign="center";
+  ctx.fillText("(1/2\u03C0) h\u2097",0,0);
+  ctx.restore();
+
+  ctx.beginPath();
+  const N=400;
+  ctx.moveTo(toX(0),toY(0));
+  for(let i=0;i<=N;i++){
+    const deg=i/N*360, phiL=deg/180*PI;
+    ctx.lineTo(toX(deg),toY(hL_norm(phiL)));
+  }
+  ctx.lineTo(toX(360),toY(0));
+  ctx.closePath();
+  ctx.fillStyle="rgba(94,170,255,0.10)";
+  ctx.fill();
+
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const deg=i/N*360, phiL=deg/180*PI;
+    const val=hL_norm(phiL);
+    if(i===0) ctx.moveTo(toX(deg),toY(val)); else ctx.lineTo(toX(deg),toY(val));
+  }
+  ctx.strokeStyle=CURVE; ctx.lineWidth=2.2; ctx.stroke();
+
+  const sunDeg=phiSun/PI*180;
+  ctx.strokeStyle=SUN; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(toX(sunDeg),mt); ctx.lineTo(toX(sunDeg),mt+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=SUN; ctx.font="bold 11px 'EB Garamond',serif";
+  ctx.fillText("\u03C6\u2609",toX(sunDeg)+4,mt+8);
+}
+
+function drawLeafScene(){
+  const svg=document.getElementById("leafScene");
+  svg.innerHTML="";
+  const ns="http://www.w3.org/2000/svg";
+  function el(tag,attrs){const e=document.createElementNS(ns,tag);for(const[k,v] of Object.entries(attrs||{}))e.setAttribute(k,v);svg.appendChild(e);return e}
+
+  el("ellipse",{cx:210,cy:260,rx:180,ry:30,fill:"none",stroke:"#2a3040","stroke-width":"1","stroke-dasharray":"6,4"});
+
+  const sunScreenX = 210 + Math.cos(phiSun)*120;
+  const sunScreenY = 40;
+  el("circle",{cx:sunScreenX,cy:sunScreenY,r:18,fill:"#ffd040",stroke:SUN,"stroke-width":"1.5"});
+  for(let i=0;i<8;i++){
+    const a=i/8*TAU;
+    el("line",{x1:sunScreenX+Math.cos(a)*22,y1:sunScreenY+Math.sin(a)*22,x2:sunScreenX+Math.cos(a)*30,y2:sunScreenY+Math.sin(a)*30,stroke:SUN,"stroke-width":"1.5","stroke-linecap":"round"});
+  }
+  el("text",Object.assign({x:sunScreenX,y:sunScreenY+45,fill:SUN,"font-size":"12","text-anchor":"middle","font-family":"'EB Garamond',serif","font-weight":"600"},{})).textContent="solar azimuth \u03C6";
+
+  for(let i=-1;i<=1;i++){
+    const sx=sunScreenX+i*25, sy=sunScreenY+25;
+    const ex=210+i*15, ey=170;
+    el("line",{x1:sx,y1:sy,x2:ex,y2:ey,stroke:"#f0c040","stroke-width":"1.2",opacity:"0.5","stroke-dasharray":"4,3"});
+    const dx=ex-sx,dy=ey-sy,len=Math.sqrt(dx*dx+dy*dy);
+    const ux=dx/len,uy=dy/len;
+    el("polygon",{points:`${ex},${ey} ${ex-6*ux+3*uy},${ey-6*uy-3*ux} ${ex-6*ux-3*uy},${ey-6*uy+3*ux}`,fill:"#f0c040",opacity:"0.5"});
+  }
+
+  const baseColor = mode==='para'?"#9a7ee0":"#50d868";
+  const peakAz = phiSun - eta;
+  const numLeaves = 12;
+  for(let i=0;i<numLeaves;i++){
+    const az = i/numLeaves*TAU;
+    const prob = hL_norm(az);
+    const maxProb = 1/PI;
+    const intensity = prob/maxProb;
+    const leafLen = 20 + intensity*30;
+    const leafWid = 6 + intensity*8;
+    const opacity = 0.15 + intensity*0.75;
+
+    const lx = 210 + Math.cos(az)*80;
+    const ly = 190 - Math.sin(az)*25;
+    const angle = -az*180/PI;
+
+    const g = document.createElementNS(ns,"g");
+    g.setAttribute("transform",`translate(${lx},${ly}) rotate(${angle})`);
+    g.setAttribute("opacity",opacity.toFixed(2));
+
+    const leaf = document.createElementNS(ns,"ellipse");
+    leaf.setAttribute("cx","0"); leaf.setAttribute("cy","0");
+    leaf.setAttribute("rx",leafLen.toFixed(1)); leaf.setAttribute("ry",leafWid.toFixed(1));
+    leaf.setAttribute("fill",baseColor); leaf.setAttribute("stroke","#3a8a48");
+    leaf.setAttribute("stroke-width","0.8");
+    g.appendChild(leaf);
+
+    const vein = document.createElementNS(ns,"line");
+    vein.setAttribute("x1",(-leafLen).toFixed(1)); vein.setAttribute("y1","0");
+    vein.setAttribute("x2",leafLen.toFixed(1)); vein.setAttribute("y2","0");
+    vein.setAttribute("stroke","#3a8a48"); vein.setAttribute("stroke-width","0.6");
+    vein.setAttribute("opacity","0.5");
+    g.appendChild(vein);
+
+    svg.appendChild(g);
+  }
+
+  el("text",{x:210,y:300,fill:FG,"font-size":"12","text-anchor":"middle","font-family":"'JetBrains Mono',monospace","font-weight":"600"}).textContent=
+    mode==='dia'?"diaheliotropic (\u03B7 = 0) \u2014 leaves face the sun":
+    mode==='para'?"paraheliotropic (\u03B7 = \u03C0/2) \u2014 leaves avoid the sun":
+    "\u03B7 = "+(eta/PI*180).toFixed(0)+"\u00B0";
+}
+
+function update(){
+  drawPolar();
+  drawCartesian();
+  drawLeafScene();
+  document.getElementById("phiSunVal").textContent = (phiSun/PI*180).toFixed(0)+"\u00B0";
+  document.getElementById("etaVal").textContent = (eta/PI*180).toFixed(0)+"\u00B0";
+}
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>{ b.classList.remove('active'); b.style.borderColor='#3a3a4a'; b.style.background='#1e1e2a'; b.style.color='#b0bcc8'; });
+  const btn = m==='dia'?document.getElementById('btnDia'):m==='para'?document.getElementById('btnPara'):document.getElementById('btnCustom');
+  const col = m==='dia'?'#50d868':m==='para'?'#9a7ee0':'#5eaaff';
+  btn.classList.add('active'); btn.style.borderColor=col; btn.style.background=col+'25'; btn.style.color=col;
+
+  if(m==='dia'){ eta=0; document.getElementById('etaSlider').value=0; }
+  else if(m==='para'){ eta=PI/2; document.getElementById('etaSlider').value=90; }
+  document.getElementById('modeDesc').textContent =
+    m==='dia'?"Diaheliotropic: leaves maximize projected area to the incident photon stream":
+    m==='para'?"Paraheliotropic: leaves minimize projected area to the incident photon stream":
+    "Custom: adjust \u03B7 to explore intermediate heliotropic behaviors";
+  update();
+}
+
+document.getElementById('phiSunSlider').addEventListener('input',e=>{phiSun=+e.target.value/180*PI;update()});
+document.getElementById('etaSlider').addEventListener('input',e=>{eta=+e.target.value/180*PI;mode='custom';setMode('custom');});
+
+setMode('dia');
+</script>
+</body>
+</html>
