@@ -2,352 +2,310 @@
 """
 PROGRAM: quad_g_L_O_L.py
 
-Converted from FORTRAN to Python.
+This program is a Python translation of the Fortran program QUAD_g_L(O_L).
 
-This program illustrates:
+It illustrates:
   (1) How to obtain Gaussian quadrature points and weights [ng, xg, wg]
-  (2) How to obtain leaf normal orientation probability density functions (pdfs):
-      - PLANOPHILE leaf inclination pdf: gL(thetaL)
-      - UNIFORM leaf azimuthal pdf: hL(phiL)
+  (2) How to obtain leaf normal orientation probability density functions (PDFs):
+      - PLANOPHILE leaf inclination PDF: gL(thetaL)
+      - UNIFORM leaf azimuthal PDF: hL(phiL)
 
-=============================================================================
-WHAT IS GAUSSIAN QUADRATURE?
-=============================================================================
 Gaussian quadrature is a numerical method for approximating definite integrals.
-Instead of summing up many tiny rectangles (like the Riemann sum), Gaussian
-quadrature picks a small number of cleverly-chosen points (called "ordinates"
-or "nodes") and assigns each a "weight". The integral is then approximated as:
+Instead of summing many tiny rectangles (like simple Riemann sums), it picks
+a small number of cleverly chosen points ("ordinates") and weights, so that
+the weighted sum gives an exact answer for polynomials up to a certain degree.
 
-    integral ≈ sum of [ weight(i) * function_value_at_node(i) ]
-
-This gives very accurate results with far fewer points than simpler methods.
-
-=============================================================================
-WHAT IS A LEAF NORMAL ORIENTATION PDF?
-=============================================================================
-In vegetation canopy science, leaves are oriented in different directions.
-The "leaf normal" is a vector pointing perpendicular to the leaf surface.
-The pdf gL(thetaL) describes how likely it is that a leaf has a particular
-inclination angle thetaL (measured from horizontal). A "planophile" canopy
-has mostly horizontal leaves (small thetaL values are more probable).
-
-=============================================================================
-PYTHON BASICS FOR BEGINNERS (used in this program):
-=============================================================================
-
-1. IMPORTS: 
-   "import numpy as np" loads the NumPy library, which provides arrays 
-   and math functions. We refer to it as "np" for short.
-
-2. VARIABLES:
-   In Python, you just write:  x = 5
-   No need to declare types like in FORTRAN.
-
-3. ARRAYS (lists and NumPy arrays):
-   - Python lists:       my_list = [1, 2, 3]
-   - NumPy arrays:       my_array = np.array([1.0, 2.0, 3.0])
-   NumPy arrays are preferred for math because they support element-wise
-   operations (e.g., my_array * 2 gives [2.0, 4.0, 6.0]).
-
-4. INDEXING:
-   Python arrays start at index 0 (not 1 like FORTRAN).
-   So my_array[0] is the first element, my_array[1] is the second, etc.
-
-5. FUNCTIONS:
-   Defined with "def function_name(arguments):".
-   They "return" values instead of modifying arguments in place (usually).
-
-6. FOR LOOPS:
-   "for i in range(n):" loops with i = 0, 1, 2, ..., n-1.
-   "for i in range(a, b):" loops with i = a, a+1, ..., b-1.
-
-7. PRINTING:
-   print("text", variable) prints text and a variable's value.
-
-8. f-STRINGS:
-   print(f"The value is {x:.4f}") prints x with 4 decimal places.
-   The f before the quotes means "formatted string".
+In vegetation science, "leaf normal orientation" describes which direction
+leaves face. The "planophile" distribution means leaves tend to be horizontal
+(like a flat plate facing up), which is common in many broadleaf plants.
 """
 
 # =============================================================================
-# IMPORT SECTION
+# IMPORTS
 # =============================================================================
-# "import" brings in external libraries (collections of pre-written code).
-# "numpy" is the fundamental package for numerical computing in Python.
-# "as np" gives it a short nickname so we can write np.cos() instead of numpy.cos().
 
-import numpy as np
+# 'math' is Python's built-in library for mathematical functions like cos, pi, etc.
+import math
 
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
-# In Python, constants are just regular variables. By convention, we write
-# them in ALL_CAPS to signal "don't change this value".
-#
-# np.pi is NumPy's built-in value of pi (3.141592653589793...), which is
-# more precise than typing it out manually.
 
-PI = np.pi                      # The mathematical constant pi ≈ 3.14159...
-DEG_TO_RAD = PI / 180.0        # Multiply degrees by this to get radians
-RAD_TO_DEG = 180.0 / PI        # Multiply radians by this to get degrees
-NG = 8                          # Quadrature order (number of points to use)
+# math.pi gives us the value of pi (3.141592654...) to full machine precision.
+# In the original Fortran code, PI was defined manually as 3.141592654.
+PI = math.pi
+
+# Conversion factors between degrees and radians.
+# Radians are the "natural" unit for angles in math; there are 2*pi radians in 360 degrees.
+# To convert degrees to radians: multiply by (pi / 180)
+# To convert radians to degrees: multiply by (180 / pi)
+DEG_TO_RAD = PI / 180.0
+RAD_TO_DEG = 180.0 / PI
+
+# ng is the "order" of the Gaussian quadrature, i.e., how many sample points we use.
+# Higher ng = more accurate integration, but also more computation.
+# The original Fortran code uses ng = 12.
+NG = 12
 
 
 # =============================================================================
 # FUNCTION: gauss_quad
 # =============================================================================
+
 def gauss_quad(ng):
     """
-    Obtain Gauss-Legendre quadrature ordinates (nodes) and weights.
+    Obtain Gauss-Legendre quadrature ordinates (xg) and weights (wg) for a
+    given quadrature order (ng).
 
-    WHAT THIS FUNCTION DOES:
-    ------------------------
-    Given an order 'ng', this function returns two arrays:
-      - xg: the quadrature nodes (x-positions where we evaluate the function)
-      - wg: the quadrature weights (how much each node contributes to the sum)
-
-    These are pre-computed values from mathematical tables. The nodes and
-    weights are symmetric around zero on the interval [-1, +1].
-
-    PARAMETERS:
-    -----------
+    Parameters
+    ----------
     ng : int
         The quadrature order. Must be one of: 4, 6, 8, 10, or 12.
-        A higher order gives a more accurate approximation of the integral,
-        but uses more evaluation points.
+        This is the number of points at which we will evaluate the function
+        we want to integrate.
 
-    RETURNS:
-    --------
-    xg : numpy array of length ng
-        The quadrature ordinates (nodes), values between -1 and +1.
-    wg : numpy array of length ng
-        The quadrature weights, positive values that sum to 2.0.
+    Returns
+    -------
+    xg : list of float
+        The quadrature ordinates (also called "nodes" or "abscissas").
+        These are the specific x-values where we evaluate our function.
+        They live in the interval [-1, +1].
+    wg : list of float
+        The quadrature weights. Each weight tells us how much "importance"
+        to give the function value at the corresponding ordinate.
 
-    EXAMPLE USAGE:
-    --------------
-        xg, wg = gauss_quad(4)
-        print(xg)  # prints the 4 node positions
-        print(wg)  # prints the 4 weights
+    How Gaussian Quadrature Works (Briefly)
+    ----------------------------------------
+    To approximate an integral from -1 to +1 of f(x) dx, we compute:
+
+        integral ≈ sum over i of [ wg[i] * f(xg[i]) ]
+
+    The magic is that the xg and wg values are chosen so this sum is EXACT
+    for any polynomial of degree up to (2*ng - 1). That's remarkably accurate
+    for smooth functions even with just a few points.
+
+    Note on Storage
+    ----------------
+    The Fortran code stores only the NEGATIVE-half ordinates and their weights,
+    because Gauss-Legendre points are symmetric about zero. The positive-half
+    points are simply the negatives of the negative-half points (mirrored),
+    and they share the same weights. This saves storage space.
     """
 
     # -------------------------------------------------------------------------
-    # PRE-COMPUTED TABLE VALUES
+    # These are the pre-computed negative-half ordinates for orders 4 through 12.
+    # They come from mathematical tables of Gauss-Legendre quadrature.
+    # Each group of numbers corresponds to a different quadrature order.
     # -------------------------------------------------------------------------
-    # These are the "negative half" of the nodes and weights for orders 4–12.
-    # Gauss-Legendre quadrature nodes are symmetric: if x is a node, so is -x,
-    # and both have the same weight. So we only store the negative half and
-    # mirror them to get the positive half.
-    #
-    # Each Python list below is written on multiple lines for readability.
-    # The backslash (\) is NOT needed in Python when you're inside brackets.
-
     xx = [
-        -0.861136312, -0.339981044,                                     # ng=4  (2 negative nodes)
-        -0.9324695,   -0.6612094,   -0.2386192,                        # ng=6  (3 negative nodes)
-        -0.960289856, -0.796666477, -0.525532410, -0.183434642,        # ng=8  (4 negative nodes)
-        -0.973906529, -0.865063367, -0.679409568, -0.433395394,        # ng=10 (5 negative nodes)
+        -0.861136312, -0.339981044,                                # ng=4  (2 negative points)
+        -0.9324695,   -0.6612094,   -0.2386192,                   # ng=6  (3 negative points)
+        -0.960289856, -0.796666477, -0.525532410, -0.183434642,   # ng=8  (4 negative points)
+        -0.973906529, -0.865063367, -0.679409568, -0.433395394,   # ng=10 (5 negative points)
         -0.148874339,
-        -0.981560634, -0.904117256, -0.769902674, -0.587317954,        # ng=12 (6 negative nodes)
+        -0.981560634, -0.904117256, -0.769902674, -0.587317954,   # ng=12 (6 negative points)
         -0.367831499, -0.125233409
     ]
 
+    # -------------------------------------------------------------------------
+    # These are the pre-computed weights corresponding to the ordinates above.
+    # Each weight is paired with the ordinate at the same position.
+    # -------------------------------------------------------------------------
     ww = [
-        0.347854845, 0.652145155,                                       # ng=4
-        0.1713245,   0.3607616,   0.4679139,                           # ng=6
-        0.101228536, 0.222381034, 0.313706646, 0.362683783,            # ng=8
-        0.066671344, 0.149451349, 0.219086363, 0.269266719,            # ng=10
+        0.347854845, 0.652145155,                                  # ng=4
+        0.1713245,   0.3607616,   0.4679139,                      # ng=6
+        0.101228536, 0.222381034, 0.313706646, 0.362683783,       # ng=8
+        0.066671344, 0.149451349, 0.219086363, 0.269266719,       # ng=10
         0.295524225,
-        0.047175336, 0.106939326, 0.160078329, 0.203167427,            # ng=12
+        0.047175336, 0.106939326, 0.160078329, 0.203167427,       # ng=12
         0.233492537, 0.249147046
     ]
 
     # -------------------------------------------------------------------------
-    # SHIFT TABLE
-    # -------------------------------------------------------------------------
-    # This dictionary maps ng/2 to the starting index in the xx and ww arrays.
-    # For example, ng=4 means ng/2=2, and the ng=4 data starts at index 0 in xx.
-    # ng=6 means ng/2=3, and the ng=6 data starts at index 2 in xx.
+    # 'ishift' tells us where in the xx/ww arrays each quadrature order starts.
+    # This is an "offset" or "index shift" so we can look up the right group.
     #
-    # A "dictionary" in Python is like a lookup table:  {key: value, ...}
+    # For ng=4:  ng//2 = 2, ishift[2] = 0  → start at index 0 in xx/ww
+    # For ng=6:  ng//2 = 3, ishift[3] = 2  → start at index 2
+    # For ng=8:  ng//2 = 4, ishift[4] = 5  → start at index 5
+    # For ng=10: ng//2 = 5, ishift[5] = 9  → start at index 9
+    # For ng=12: ng//2 = 6, ishift[6] = 14 → start at index 14
+    #
+    # Note: ishift has 7 entries (indices 0-6). Index 0 and 1 are unused placeholders.
+    # -------------------------------------------------------------------------
+    ishift = [0, 0, 0, 2, 5, 9, 14]
 
-    ishift = {
-        2: 0,       # ng=4:  start at index 0
-        3: 2,       # ng=6:  start at index 2
-        4: 5,       # ng=8:  start at index 5
-        5: 9,       # ng=10: start at index 9
-        6: 14       # ng=12: start at index 14
-    }
+    # ng2 is half of ng. Since Gauss-Legendre points are symmetric,
+    # we only need to store half the points and mirror the rest.
+    ng2 = ng // 2  # '//' is Python's integer (floor) division operator
 
     # -------------------------------------------------------------------------
-    # BUILD THE FULL NODE AND WEIGHT ARRAYS
+    # Initialize xg and wg as lists of zeros with 'ng' elements.
+    # In Python, [0.0] * ng creates a list like [0.0, 0.0, 0.0, 0.0] for ng=4.
     # -------------------------------------------------------------------------
-    # We create arrays of zeros with length ng, then fill them in.
+    xg = [0.0] * ng
+    wg = [0.0] * ng
 
-    xg = np.zeros(ng)      # np.zeros(ng) creates an array of ng zeros: [0.0, 0.0, ...]
-    wg = np.zeros(ng)
-
-    ng2 = ng // 2           # "//" is integer division in Python (drops the remainder)
-                             # e.g., 4 // 2 = 2,  5 // 2 = 2
-
-    # First, copy the negative-half nodes and their weights from the tables.
-    # range(ng2) gives: 0, 1, ..., ng2-1
-
+    # -------------------------------------------------------------------------
+    # Fill in the first half (the negative ordinates and their weights)
+    # by copying from our pre-computed tables.
+    # -------------------------------------------------------------------------
     for i in range(ng2):
-        xg[i] = xx[i + ishift[ng2]]    # Look up the right section of the table
+        # 'i + ishift[ng2]' picks the correct starting position in xx/ww.
+        xg[i] = xx[i + ishift[ng2]]
         wg[i] = ww[i + ishift[ng2]]
 
-    # Now mirror to get the positive-half nodes.
-    # The positive nodes are the negatives of the negative nodes, in reverse order.
-    # The weights are the same (just mirrored).
+    # -------------------------------------------------------------------------
+    # Fill in the second half (the positive ordinates) by mirroring.
+    # The positive ordinates are the negatives of the negative ordinates,
+    # read in reverse order. The weights are the same (just mirrored).
     #
-    # In FORTRAN this was: xg(i) = -xg(ng+1-i)
-    # In Python (0-indexed): xg[i] = -xg[ng-1-i]
+    # For ng=4:
+    #   xg[0], xg[1] are negative (already filled above)
+    #   xg[2] = -xg[1]  (mirror of 2nd negative point)
+    #   xg[3] = -xg[0]  (mirror of 1st negative point)
+    #   wg[2] =  wg[1], wg[3] = wg[0]
+    # -------------------------------------------------------------------------
+    for i in range(ng2, ng):
+        # 'ng - 1 - i' counts backwards from the first half.
+        # Example for ng=4: when i=2, ng-1-i = 1; when i=3, ng-1-i = 0.
+        xg[i] = -xg[ng - 1 - i]
+        wg[i] =  wg[ng - 1 - i]
 
-    for i in range(ng2, ng):            # i goes from ng2 to ng-1
-        xg[i] = -xg[ng - 1 - i]        # Mirror the node (flip sign)
-        wg[i] =  wg[ng - 1 - i]        # Copy the weight (same value)
-
-    # Return both arrays. In Python, you can return multiple values separated
-    # by commas. The caller receives them as a "tuple" which can be unpacked:
-    #     xg, wg = gauss_quad(4)
-
+    # Return the complete arrays of ordinates and weights.
     return xg, wg
 
 
 # =============================================================================
 # FUNCTION: check_quad
 # =============================================================================
+
 def check_quad(ng, xg, wg):
     """
-    Check that the quadrature nodes and weights are correct.
+    Verify that the quadrature points and weights are correct by running
+    two simple tests.
 
-    WHAT THIS FUNCTION DOES:
-    ------------------------
-    Two verification tests:
+    Test 1: The sum of ALL weights should equal 2.0.
+            This is because Gauss-Legendre quadrature integrates over [-1, +1],
+            and the integral of the constant function f(x) = 1 over [-1, +1]
+            equals 2. Since the weights must reproduce this exactly:
+                sum(wg) = integral from -1 to +1 of 1 dx = 2.0
 
-    Test 1: The weights should sum to exactly 2.0.
-            (Gauss-Legendre quadrature integrates over [-1, +1], which has
-             length 2, so the weights must sum to 2.)
+    Test 2: The integral of x from 0 to +1 should equal 0.5.
+            We only sum over the POSITIVE ordinates (the upper half, indices
+            ng//2 through ng-1) to integrate from 0 to +1.
+            integral from 0 to 1 of x dx = [x^2 / 2] from 0 to 1 = 0.5
 
-    Test 2: The integral of x from 0 to 1 should equal 0.5.
-            (Because the antiderivative of x is x²/2, so [1²/2 - 0²/2] = 0.5.)
-            We approximate this by summing x(i)*w(i) for nodes in [0, 1].
-
-    PARAMETERS:
-    -----------
+    Parameters
+    ----------
     ng : int
-        Number of quadrature points.
-    xg : numpy array
-        The quadrature nodes.
-    wg : numpy array
-        The quadrature weights.
-
-    RETURNS:
-    --------
-    Nothing. This function just prints the results of the checks.
+        Quadrature order.
+    xg : list of float
+        Quadrature ordinates.
+    wg : list of float
+        Quadrature weights.
     """
 
     # -------------------------------------------------------------------------
-    # TEST 1: Do the weights sum to 2.0?
+    # Test 1: Sum all the weights.
+    # 'sum()' is a built-in Python function that adds up all elements in a list.
     # -------------------------------------------------------------------------
-    # np.sum(wg) adds up all elements in the array wg.
-    # This is equivalent to: wg[0] + wg[1] + wg[2] + ... + wg[ng-1]
-
-    weight_sum = np.sum(wg)
+    weight_sum = sum(wg)
     print(f" Qwts check (=2.0?): {weight_sum}")
+    # The 'f' before the string makes it an "f-string" (formatted string literal).
+    # Inside curly braces {}, Python evaluates the expression and inserts the result.
 
     # -------------------------------------------------------------------------
-    # TEST 2: Does the integral of x from 0 to 1 equal 0.5?
+    # Test 2: Compute integral of x from 0 to +1.
+    # We sum xg[i] * wg[i] only for the positive-half ordinates.
+    # In Python, range(ng//2, ng) gives indices from ng//2 up to ng-1.
+    # For ng=4: range(2, 4) gives i = 2, 3.
     # -------------------------------------------------------------------------
-    # We only sum over the positive-half nodes (indices ng//2 to ng-1),
-    # because those are the nodes in the interval [0, 1].
-    #
-    # np.sum(xg[ng//2:] * wg[ng//2:]) means:
-    #   - xg[ng//2:] takes elements from index ng//2 to the end (this is "slicing")
-    #   - The "*" multiplies element-by-element (not matrix multiplication)
-    #   - np.sum() adds up all the products
+    ordinate_sum = 0.0
+    for i in range(ng // 2, ng):
+        ordinate_sum += xg[i] * wg[i]
+        # '+=' means "add the right side to the current value of the left side"
+        # It's shorthand for: ordinate_sum = ordinate_sum + xg[i] * wg[i]
 
-    integral_sum = np.sum(xg[ng // 2:] * wg[ng // 2:])
-    print(f" Qord check (=0.5?): {integral_sum}")
+    print(f" Qord check (=0.5?): {ordinate_sum}")
 
 
 # =============================================================================
 # FUNCTION: example_integral
 # =============================================================================
+
 def example_integral(ng, xg, wg):
     """
-    Demonstrate how to compute a definite integral using Gaussian quadrature.
+    Demonstrate how to compute a definite integral with arbitrary bounds [A, B]
+    using Gauss-Legendre quadrature.
 
-    WHAT THIS FUNCTION DOES:
-    ------------------------
-    Computes the integral:  ∫ from A to B of |x| dx,  where A = -1 and B = +1.
+    The example computes:  integral from -1 to +1 of |x| dx
 
-    The exact answer is 1.0 (area of two triangles, each with base 1 and height 1).
+    The exact answer is 1.0 (the area under |x| from -1 to +1 forms two
+    right triangles, each with area 0.5).
 
-    HOW TO CHANGE THE INTEGRATION LIMITS:
-    --------------------------------------
-    Gauss-Legendre quadrature nodes are defined on [-1, +1]. To integrate over
-    a different interval [A, B], we apply a linear change of variables:
+    KEY CONCEPT: Change of Variables
+    --------------------------------
+    Gauss-Legendre quadrature is defined on the interval [-1, +1]. But what if
+    we want to integrate over a different interval [A, B]?
 
-        new_x = conv1 * xg[i] + conv2
+    We use a linear change of variables:
+        x_new = conv1 * xg[i] + conv2
 
     where:
-        conv1 = (B - A) / 2       (scaling factor)
-        conv2 = (B + A) / 2       (shifting factor)
+        conv1 = (B - A) / 2     ... this "stretches" or "compresses" the interval
+        conv2 = (B + A) / 2     ... this "shifts" the center of the interval
 
-    And the integral becomes:
-        integral = conv1 * sum( f(new_x[i]) * wg[i] )
+    This maps each quadrature ordinate xg[i] (which lives in [-1, +1]) to a
+    new value x_new that lives in [A, B].
 
-    Don't forget to multiply by conv1 at the end!
+    We must also multiply the final sum by conv1 (the Jacobian of the
+    transformation) to account for the change in interval width.
 
-    PARAMETERS:
-    -----------
+    Parameters
+    ----------
     ng : int
-        Number of quadrature points.
-    xg : numpy array
-        The quadrature nodes.
-    wg : numpy array
-        The quadrature weights.
-
-    RETURNS:
-    --------
-    Nothing. Prints the computed integral for verification.
+        Quadrature order.
+    xg : list of float
+        Quadrature ordinates (in [-1, +1]).
+    wg : list of float
+        Quadrature weights.
     """
 
-    # -------------------------------------------------------------------------
-    # STEP 1: Define the integration limits and conversion factors
-    # -------------------------------------------------------------------------
-
-    upper_limit = 1.0       # B: upper bound of the integral
-    lower_limit = -1.0      # A: lower bound of the integral
-
-    conv1 = (upper_limit - lower_limit) / 2.0      # = (1 - (-1)) / 2 = 1.0
-    conv2 = (upper_limit + lower_limit) / 2.0      # = (1 + (-1)) / 2 = 0.0
+    # Define the limits of integration.
+    upper_limit = 1.0
+    lower_limit = -1.0
 
     # -------------------------------------------------------------------------
-    # STEP 2: Evaluate the integral
+    # Step 1: Compute the conversion factors for the change of variables.
     # -------------------------------------------------------------------------
-    # For each quadrature node, transform it to the [A, B] interval,
-    # evaluate the function |x| at that point, multiply by the weight,
-    # and accumulate into the sum.
-
-    total = 0.0                                     # Initialize the running sum to zero
-
-    for i in range(ng):                             # Loop over all ng quadrature points
-        new_ord = conv1 * xg[i] + conv2            # Transform node to [A, B] interval
-        total = total + abs(new_ord) * wg[i]        # Add |x| * weight to the sum
-        #
-        # "abs()" is Python's built-in absolute value function.
-        # abs(-3) returns 3, abs(5) returns 5.
+    conv1 = (upper_limit - lower_limit) / 2.0   # = (1 - (-1)) / 2 = 1.0
+    conv2 = (upper_limit + lower_limit) / 2.0   # = (1 + (-1)) / 2 = 0.0
 
     # -------------------------------------------------------------------------
-    # STEP 3: Apply the final scaling factor
+    # Step 2: Perform the numerical integration.
+    # For each quadrature point, we:
+    #   (a) Map xg[i] from [-1,+1] to the actual integration interval [A,B]
+    #   (b) Evaluate the function |x| at this mapped point
+    #   (c) Multiply by the weight wg[i] and accumulate the sum
     # -------------------------------------------------------------------------
-    # IMPORTANT: You must multiply the sum by conv1 to complete the
-    # change of variables. Forgetting this is a common mistake!
+    total = 0.0
+    for i in range(ng):
+        # Map the quadrature ordinate to the actual interval [lower_limit, upper_limit].
+        new_ordinate = conv1 * xg[i] + conv2
 
-    total = total * conv1
+        # Evaluate |x| at the mapped point and accumulate the weighted sum.
+        # 'abs()' is Python's built-in absolute value function.
+        total += abs(new_ordinate) * wg[i]
+
+    # -------------------------------------------------------------------------
+    # Step 3: Multiply by conv1 (the Jacobian factor) to complete the
+    # change-of-variables correction.
+    # -------------------------------------------------------------------------
+    total *= conv1
+    # '*=' means "multiply the left side by the right side and store the result"
+    # Equivalent to: total = total * conv1
 
     print(f" Intg check (=1.0?): {total}")
 
@@ -355,162 +313,188 @@ def example_integral(ng, xg, wg):
 # =============================================================================
 # FUNCTION: leaf_normal_pdf
 # =============================================================================
+
 def leaf_normal_pdf(ng, xg, wg):
     """
-    Compute the leaf normal orientation probability density functions (pdfs).
+    Compute the leaf normal orientation probability density functions (PDFs):
 
-    WHAT THIS FUNCTION DOES:
-    ------------------------
-    Computes two pdfs that describe how leaves are oriented in a canopy:
+    1) gL(thetaL) — the PLANOPHILE leaf inclination angle PDF
+    2) hL(phiL)   — the UNIFORM leaf azimuthal angle PDF
 
-    1. gL(thetaL) — the PLANOPHILE leaf inclination angle pdf.
-       "Planophile" means the canopy has mostly horizontal leaves.
-       The formula is:
-           gL(thetaL) = (2/pi) * (1 + cos(2 * thetaL))
-       where thetaL is the leaf inclination angle (0 = horizontal, pi/2 = vertical).
+    Background
+    ----------
+    In plant canopy science, we describe how leaves are oriented using two angles:
 
-       This pdf peaks at thetaL=0 (horizontal) and equals zero at thetaL=pi/2
-       (vertical), which matches the "planophile" (horizontal-loving) distribution.
+    - thetaL (theta_L): the "inclination angle" — how tilted the leaf is
+      from horizontal. thetaL = 0 means perfectly horizontal (flat),
+      thetaL = pi/2 means perfectly vertical (standing on edge).
 
-    2. hL(phiL) — the UNIFORM leaf azimuthal angle pdf.
-       This is simply 1.0 everywhere, meaning leaves face all compass directions
-       equally (no preferred azimuthal direction).
+    - phiL (phi_L): the "azimuthal angle" — which compass direction the
+      leaf faces (north, south, east, west, etc.).
 
-    The function also checks that gL integrates to 1.0 over [0, pi/2],
-    which is required for any valid probability density function.
+    A "planophile" canopy has leaves that prefer to be HORIZONTAL (flat).
+    The PDF for this distribution is:
 
-    PARAMETERS:
-    -----------
+        gL(thetaL) = (2/pi) * (1 + cos(2 * thetaL))
+
+    This function peaks at thetaL = 0 (horizontal) and equals zero at
+    thetaL = pi/2 (vertical), confirming the preference for flat leaves.
+
+    The azimuthal distribution is UNIFORM, meaning leaves face all compass
+    directions equally — there's no preferred azimuth.
+
+        hL(phiL) = 1.0   (constant for all directions)
+
+    Normalization Check
+    -------------------
+    A valid PDF must integrate to 1.0 over its domain. For gL:
+
+        integral from 0 to pi/2 of gL(thetaL) d(thetaL) = 1.0
+
+    We verify this using Gauss-Legendre quadrature.
+
+    Parameters
+    ----------
     ng : int
-        Number of quadrature points.
-    xg : numpy array
-        The quadrature nodes.
-    wg : numpy array
-        The quadrature weights.
+        Quadrature order.
+    xg : list of float
+        Quadrature ordinates (in [-1, +1]).
+    wg : list of float
+        Quadrature weights.
 
-    RETURNS:
-    --------
-    gL : numpy array of length ng
-        The planophile leaf inclination pdf evaluated at the quadrature nodes
-        (mapped to the interval [0, pi/2]).
-    hL : numpy array of length ng
-        The uniform leaf azimuthal pdf (all values are 1.0).
+    Returns
+    -------
+    gL : list of float
+        The planophile leaf inclination PDF evaluated at each (mapped)
+        quadrature point.
+    hL : list of float
+        The uniform leaf azimuthal PDF (all values are 1.0).
     """
 
     # -------------------------------------------------------------------------
-    # INITIALIZE hL: Uniform azimuthal pdf
+    # Set hL to 1.0 for all quadrature points (uniform azimuthal distribution).
+    # [1.0] * ng creates a list of ng ones, e.g., [1.0, 1.0, 1.0, 1.0] for ng=4.
     # -------------------------------------------------------------------------
-    # np.ones(ng) creates an array of ng ones: [1.0, 1.0, 1.0, ...]
-    # This represents a uniform (constant) probability density.
-
-    hL = np.ones(ng)
+    hL = [1.0] * ng
 
     # -------------------------------------------------------------------------
-    # COMPUTE gL: Planophile leaf inclination pdf
+    # Now compute the planophile gL(thetaL) = (2/pi) * (1 + cos(2*thetaL))
+    #
+    # The integration domain is thetaL in [0, pi/2] (0 to 90 degrees).
+    # We need to map our quadrature ordinates (which live in [-1, +1]) to
+    # the interval [0, pi/2] using the same change-of-variables trick.
     # -------------------------------------------------------------------------
-    # We need to evaluate gL at quadrature nodes mapped to [0, pi/2].
-    # The Gauss quadrature nodes xg are on [-1, +1], so we transform them
-    # to [0, pi/2] using the same conv1/conv2 technique as before.
 
-    gL = np.zeros(ng)       # Create an array of zeros to hold gL values
+    upper_limit = PI / 2.0   # pi/2 radians = 90 degrees
+    lower_limit = 0.0        # 0 radians = 0 degrees
 
-    # STEP 1: Define integration limits and conversion factors
+    # Step 1: Compute conversion factors for mapping [-1,+1] → [0, pi/2].
+    conv1 = (upper_limit - lower_limit) / 2.0   # = pi/4
+    conv2 = (upper_limit + lower_limit) / 2.0   # = pi/4
 
-    upper_limit = PI / 2.0      # pi/2 radians = 90 degrees (vertical)
-    lower_limit = 0.0           # 0 radians = 0 degrees (horizontal)
-
-    conv1 = (upper_limit - lower_limit) / 2.0      # = pi/4
-    conv2 = (upper_limit + lower_limit) / 2.0      # = pi/4
-
-    # STEP 2: Evaluate gL at each transformed node and accumulate the integral
-
-    total = 0.0
+    # -------------------------------------------------------------------------
+    # Step 2: Evaluate gL at each mapped quadrature point and simultaneously
+    #         compute the normalization integral to verify it equals 1.0.
+    # -------------------------------------------------------------------------
+    gL = [0.0] * ng   # Initialize gL as a list of zeros.
+    normalization_sum = 0.0
 
     for i in range(ng):
-        # Transform the quadrature node from [-1,+1] to [0, pi/2]
-        new_ord = conv1 * xg[i] + conv2
+        # Map the i-th quadrature ordinate from [-1,+1] to [0, pi/2].
+        new_ordinate = conv1 * xg[i] + conv2
 
-        # Evaluate the planophile pdf at this angle:
-        #   gL = (2/pi) * (1 + cos(2 * thetaL))
-        #
-        # np.cos() computes the cosine of an angle in radians.
+        # Evaluate the planophile PDF at this angle.
+        # math.cos() computes the cosine of an angle given in RADIANS.
+        gL[i] = (2.0 / PI) * (1.0 + math.cos(2.0 * new_ordinate))
 
-        gL[i] = (2.0 / PI) * (1.0 + np.cos(2.0 * new_ord))
+        # Accumulate the weighted sum for the normalization check.
+        normalization_sum += gL[i] * wg[i]
 
-        # Accumulate the weighted sum for the normalization check
-        total = total + gL[i] * wg[i]
+    # Step 3: Apply the Jacobian factor (conv1) to complete the integral.
+    normalization_sum *= conv1
 
-    # STEP 3: Apply the scaling factor to complete the integral
+    print(f" LNO  check (=1.0?): {normalization_sum}")
 
-    total = total * conv1
-
-    # Print the normalization check. For a valid pdf, this must equal 1.0.
-    print(f" LNO  check (=1.0?): {total}")
-
-    # Return both pdf arrays
+    # Return both PDFs.
     return gL, hL
 
 
 # =============================================================================
 # MAIN PROGRAM
 # =============================================================================
-# In Python, the code below runs when you execute this file directly
-# (e.g., by typing "python quad_g_L_O_L.py" in the terminal).
-#
-# The special variable __name__ is set to "__main__" when the script is run
-# directly. If this file were imported by another script, __name__ would be
-# set to the module name instead, and this block would NOT run.
-#
-# This is a very common Python pattern called the "main guard".
 
-if __name__ == "__main__":
+def main():
+    """
+    Main function — the entry point of the program.
 
-    # Print a header so the user knows the program is running
+    This is equivalent to the "PROGRAM" block in the original Fortran code.
+    It calls each subroutine in sequence:
+      1. Get the quadrature points and weights.
+      2. Verify them with simple checks.
+      3. Demonstrate an example integral.
+      4. Compute and verify the leaf normal orientation PDFs.
+    """
+
+    # Step 1: Obtain Gauss-Legendre quadrature ordinates and weights.
     print("=" * 60)
-    print("  QUAD_g_L(O_L) — Gaussian Quadrature & Leaf Normal PDFs")
+    print(" Step 1: Obtaining Gauss-Legendre quadrature (ng = {})".format(NG))
     print("=" * 60)
-    print()
-
-    # STEP 1: Get the quadrature nodes and weights
-    # The function returns two arrays, which we "unpack" into xg and wg.
-    print("--- Quadrature Setup ---")
     xg, wg = gauss_quad(NG)
+    # 'xg, wg = ...' is called "tuple unpacking". The function returns two
+    # values, and Python assigns the first to xg and the second to wg.
 
-    # Print the nodes and weights so the user can see them
-    # "enumerate()" gives both the index and the value in a loop:
-    #   for index, value in enumerate(my_list):
-    print()
-    print(f"  Quadrature order (ng) = {NG}")
-    print(f"  {'i':>3}  {'xg[i]':>12}  {'wg[i]':>12}")      # Column headers
-    print(f"  {'---':>3}  {'--------':>12}  {'--------':>12}")
-    for i, (x, w) in enumerate(zip(xg, wg)):
-        # "zip(xg, wg)" pairs up corresponding elements: (xg[0],wg[0]), (xg[1],wg[1]), ...
-        print(f"  {i:>3}  {x:>12.6f}  {w:>12.6f}")
+    # Print the ordinates and weights so we can see them.
+    print("\n Ordinates (xg) and Weights (wg):")
+    print(" {:>5s}   {:>12s}   {:>12s}".format("i", "xg[i]", "wg[i]"))
+    # '{:>12s}' means: right-align the string in a field 12 characters wide.
+    for i in range(NG):
+        print(" {:>5d}   {:>12.8f}   {:>12.8f}".format(i, xg[i], wg[i]))
+        # '{:>12.8f}' means: right-align a floating-point number, 12 chars wide,
+        # 8 digits after the decimal point.
     print()
 
-    # STEP 2: Check the quadrature
-    print("--- Quadrature Checks ---")
+    # Step 2: Check that the quadrature is correct.
+    print("=" * 60)
+    print(" Step 2: Checking the quadrature")
+    print("=" * 60)
     check_quad(NG, xg, wg)
     print()
 
-    # STEP 3: Example integral
-    print("--- Example Integral: int_{-1}^{+1} |x| dx ---")
+    # Step 3: Demonstrate an example integral: integral of |x| from -1 to +1.
+    print("=" * 60)
+    print(" Step 3: Example integral of |x| from -1 to +1")
+    print("=" * 60)
     example_integral(NG, xg, wg)
     print()
 
-    # STEP 4: Compute the leaf normal pdfs
-    print("--- Leaf Normal Orientation PDFs ---")
+    # Step 4: Compute the leaf normal orientation PDFs.
+    print("=" * 60)
+    print(" Step 4: Leaf normal orientation PDFs")
+    print("=" * 60)
     gL, hL = leaf_normal_pdf(NG, xg, wg)
 
-    # Print the pdf values
-    print()
-    print(f"  {'i':>3}  {'gL[i]':>12}  {'hL[i]':>12}")
-    print(f"  {'---':>3}  {'--------':>12}  {'--------':>12}")
+    # Print the resulting PDF values for inspection.
+    print("\n Planophile gL and Uniform hL at quadrature points:")
+    print(" {:>5s}   {:>12s}   {:>12s}".format("i", "gL[i]", "hL[i]"))
     for i in range(NG):
-        print(f"  {i:>3}  {gL[i]:>12.6f}  {hL[i]:>12.6f}")
+        print(" {:>5d}   {:>12.8f}   {:>12.8f}".format(i, gL[i], hL[i]))
     print()
 
-    # Program complete
-    print("=" * 60)
-    print("  Program finished successfully.")
-    print("=" * 60)
+    print("Program complete.")
+
+
+# =============================================================================
+# SCRIPT ENTRY POINT
+# =============================================================================
+# The block below is a standard Python idiom. It means:
+#   "If this file is being run directly (not imported as a module), then
+#    call the main() function."
+#
+# When you run a Python file, Python sets the special variable __name__ to
+# the string "__main__". If instead you import this file from another script,
+# __name__ would be set to the module's name, and main() would NOT run
+# automatically.
+# =============================================================================
+
+if __name__ == "__main__":
+    main()

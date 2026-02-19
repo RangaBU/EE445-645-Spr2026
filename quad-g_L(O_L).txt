@@ -9,7 +9,7 @@
 * begin declarations
 *
 	PARAMETER (PI = 3.141592654)
-        PARAMETER (ng = 4)
+        PARAMETER (ng = 12)
 	PARAMETER (degtorad = 3.141592654/180.0)
 	PARAMETER (radtodeg = 180.0/3.141592654)
 *
@@ -219,7 +219,7 @@
 *
 * obtain the planophile gL
 *
-         gL(thetaL) = (2/pi) (1+cos(2thetaL))
+*       gL(thetaL) = (2/pi) (1+cos(2thetaL))
 *
 * and at the same time check if it satisfies the required condition
 * of normalization, that is, 
