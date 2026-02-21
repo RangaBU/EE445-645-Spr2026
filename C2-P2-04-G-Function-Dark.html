@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G-Function for Normalised Leaf-Angle Distributions</title>
+<style>
+  body {
+    margin: 0; padding: 40px 20px;
+    background: #0a0a0f;
+    font-family: 'Times New Roman', Georgia, serif;
+    display: flex; justify-content: center;
+  }
+  .wrap { max-width: 780px; width: 100%; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="plot" width="720" height="500"></canvas>
+</div>
+<script>
+const PI = Math.PI;
+const TAU = PI * 2;
+const canvas = document.getElementById("plot");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+const ml = 68, mr = 20, mt = 20, mb = 70;
+const pw = W - ml - mr, ph = H - mt - mb;
+const xMin = 0, xMax = 90, yMin = 0.3, yMax = 0.8;
+
+function toX(deg){ return ml + (deg - xMin)/(xMax - xMin)*pw; }
+function toY(val){ return mt + ph - (val - yMin)/(yMax - yMin)*ph; }
+
+const BG = "#0a0a0f";
+const FG = "#d0d8e0";
+
+// Numerically computed G(theta) for normalised gbar_L (int gbar sin dtheta = 1)
+const gData = {
+  uniform: new Array(91).fill(0.5),
+  planophile: [0.75,0.749886,0.749543,0.748973,0.748175,0.747151,0.745903,0.74443,0.742737,0.740823,0.738692,0.736347,0.73379,0.731024,0.728053,0.72488,0.721509,0.717945,0.714191,0.710252,0.706133,0.70184,0.697376,0.692748,0.687962,0.683023,0.677937,0.67271,0.667349,0.66186,0.65625,0.650526,0.644695,0.638763,0.632739,0.626629,0.620441,0.614182,0.60786,0.601483,0.595059,0.588595,0.582099,0.575579,0.569044,0.5625,0.555956,0.549421,0.542901,0.536405,0.529941,0.523517,0.51714,0.510818,0.504559,0.498371,0.492261,0.486237,0.480305,0.474474,0.46875,0.46314,0.457651,0.45229,0.447063,0.441977,0.437038,0.432252,0.427624,0.42316,0.418867,0.414748,0.410809,0.407055,0.403491,0.40012,0.396947,0.393976,0.39121,0.388653,0.386308,0.384177,0.382263,0.38057,0.379097,0.377849,0.376825,0.376027,0.375457,0.375114,0.375],
+  erectophile: [0.375,0.375057,0.375228,0.375514,0.375912,0.376424,0.377049,0.377785,0.378632,0.379588,0.380654,0.381827,0.383105,0.384488,0.385974,0.38756,0.389245,0.391028,0.392905,0.394874,0.396933,0.39908,0.401312,0.403626,0.406019,0.408489,0.411032,0.413645,0.416326,0.41907,0.421875,0.424737,0.427653,0.430618,0.433631,0.436686,0.43978,0.442909,0.44607,0.449258,0.45247,0.455703,0.45895,0.46221,0.465478,0.46875,0.472022,0.47529,0.47855,0.481797,0.48503,0.488242,0.49143,0.494591,0.49772,0.500814,0.503869,0.506882,0.509847,0.512763,0.515625,0.51843,0.521174,0.523855,0.526468,0.529011,0.531481,0.533874,0.536188,0.53842,0.540567,0.542626,0.544595,0.546472,0.548255,0.54994,0.551526,0.553012,0.554395,0.555673,0.556846,0.557912,0.558868,0.559715,0.560451,0.561076,0.561588,0.561986,0.562272,0.562443,0.5625],
+  plagiophile: [0.625,0.624905,0.62462,0.624145,0.623483,0.622635,0.621604,0.620393,0.619006,0.617446,0.615719,0.61383,0.611783,0.609587,0.607246,0.604768,0.602159,0.599429,0.596584,0.593632,0.590583,0.587444,0.584224,0.580932,0.577578,0.57417,0.570717,0.567229,0.563714,0.560182,0.556641,0.553099,0.549567,0.546051,0.54256,0.539102,0.535685,0.532314,0.528999,0.525744,0.522557,0.519442,0.516406,0.513452,0.510587,0.507812,0.505134,0.502553,0.500073,0.497696,0.495424,0.493258,0.491199,0.489246,0.487401,0.485662,0.484028,0.482498,0.481071,0.479745,0.478516,0.477382,0.47634,0.475388,0.47452,0.473734,0.473026,0.472392,0.471827,0.471327,0.470888,0.470505,0.470175,0.469892,0.469652,0.469451,0.469285,0.46915,0.469042,0.468957,0.468892,0.468844,0.468809,0.468784,0.468769,0.468759,0.468754,0.468751,0.46875,0.46875,0.46875],
+  extremophile: [0.357143,0.357252,0.357578,0.35812,0.358876,0.359845,0.361024,0.362408,0.363993,0.365776,0.36775,0.369909,0.372247,0.374758,0.377433,0.380266,0.383246,0.386367,0.389619,0.392992,0.396477,0.400065,0.403744,0.407506,0.411339,0.415234,0.41918,0.423167,0.427184,0.431221,0.435268,0.439315,0.443352,0.44737,0.45136,0.455312,0.459218,0.463069,0.466858,0.470578,0.474221,0.477781,0.481251,0.484626,0.487901,0.491071,0.494133,0.497082,0.499917,0.502633,0.50523,0.507705,0.510059,0.51229,0.514399,0.516387,0.518254,0.520002,0.521633,0.523149,0.524554,0.525849,0.52704,0.528129,0.52912,0.530018,0.530827,0.531552,0.532198,0.532769,0.533271,0.533708,0.534086,0.534409,0.534684,0.534913,0.535103,0.535257,0.535381,0.535478,0.535552,0.535607,0.535647,0.535675,0.535693,0.535704,0.53571,0.535713,0.535714,0.535714,0.535714],
+  spherical: [0.424413,0.424445,0.424542,0.424704,0.42493,0.42522,0.425573,0.425991,0.426471,0.427014,0.427619,0.428285,0.429012,0.4298,0.430646,0.431551,0.432514,0.433533,0.434607,0.435736,0.436918,0.438153,0.439438,0.440773,0.442156,0.443586,0.445061,0.446579,0.44814,0.449742,0.451382,0.45306,0.454773,0.456519,0.458298,0.460106,0.461942,0.463804,0.46569,0.467598,0.469525,0.471471,0.473431,0.475405,0.47739,0.479384,0.481385,0.48339,0.485396,0.487403,0.489406,0.491405,0.493396,0.495377,0.497346,0.4993,0.501236,0.503154,0.505049,0.506919,0.508763,0.510577,0.51236,0.514108,0.51582,0.517492,0.519124,0.520712,0.522253,0.523747,0.525189,0.526579,0.527914,0.529192,0.53041,0.531567,0.532661,0.53369,0.534651,0.535544,0.536365,0.537115,0.53779,0.53839,0.538913,0.539358,0.539725,0.54001,0.540215,0.540339,0.54038],
+};
+
+// Curve definitions
+const curves = [
+  { key:"planophile",   label:"planophile",   color:"#ff5050", lineW:2.5, dash:[] },
+  { key:"erectophile",  label:"erectophile",  color:"#5e9eff", lineW:2.5, dash:[], marker:"filled" },
+  { key:"plagiophile",  label:"plagiophile",  color:"#50d868", lineW:2.5, dash:[10,5] },
+  { key:"extremophile", label:"extremophile", color:"#f0b030", lineW:2.2, dash:[6,4], marker:"open" },
+  { key:"uniform",      label:"uniform",      color:"#c0c0c8", lineW:2.0, dash:[3,5] },
+  { key:"spherical",    label:"spherical",    color:"#e0e0e8", lineW:2.8, dash:[14,4,3,4] },
+];
+
+// Background
+ctx.fillStyle = BG;
+ctx.fillRect(0, 0, W, H);
+
+// Grid
+ctx.strokeStyle = "#1e2230"; ctx.lineWidth = 0.5;
+for(let y = yMin; y <= yMax; y += 0.05){
+  if(Math.abs(y - yMin) < 0.001) continue;
+  ctx.beginPath(); ctx.moveTo(ml, toY(y)); ctx.lineTo(ml+pw, toY(y)); ctx.stroke();
+}
+for(let x = 15; x <= 90; x += 15){
+  ctx.beginPath(); ctx.moveTo(toX(x), mt); ctx.lineTo(toX(x), mt+ph); ctx.stroke();
+}
+
+// Axes
+ctx.strokeStyle = FG; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+ctx.beginPath(); ctx.moveTo(ml, mt); ctx.lineTo(ml, mt+ph); ctx.lineTo(ml+pw, mt+ph); ctx.stroke();
+ctx.lineWidth = 0.8;
+ctx.beginPath(); ctx.moveTo(ml, mt); ctx.lineTo(ml+pw, mt); ctx.lineTo(ml+pw, mt+ph); ctx.stroke();
+
+// X ticks
+ctx.fillStyle = FG; ctx.lineWidth = 1.2;
+ctx.font = "15px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center"; ctx.textBaseline = "top";
+for(let x = 0; x <= 90; x += 15){
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(toX(x), mt+ph); ctx.lineTo(toX(x), mt+ph+6); ctx.stroke();
+  ctx.fillText(x.toString(), toX(x), mt+ph+9);
+}
+
+// Y ticks
+ctx.textAlign = "right"; ctx.textBaseline = "middle";
+for(let yi = 3; yi <= 8; yi++){
+  const y = yi * 0.1;
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(ml, toY(y)); ctx.lineTo(ml-6, toY(y)); ctx.stroke();
+  ctx.fillText(y.toFixed(1), ml-9, toY(y));
+}
+
+// X label
+ctx.setLineDash([]); ctx.font = "bold 17px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center"; ctx.textBaseline = "top";
+ctx.fillText("Beam Zenith Angle \u03B8 in Degrees", ml+pw/2, mt+ph+38);
+
+// Y label
+ctx.save(); ctx.translate(16, mt+ph/2); ctx.rotate(-PI/2);
+ctx.font = "bold 20px 'Times New Roman', Georgia, serif";
+ctx.textAlign = "center"; ctx.textBaseline = "middle";
+ctx.fillText("G(\u03B8)", 0, 0);
+ctx.restore();
+
+// Plot curves
+curves.forEach(d => {
+  const data = gData[d.key];
+  ctx.strokeStyle = d.color; ctx.lineWidth = d.lineW; ctx.setLineDash(d.dash);
+  ctx.beginPath();
+  for(let i = 0; i <= 90; i++){
+    const px = toX(i), py = toY(data[i]);
+    if(i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  if(d.marker){
+    for(let i = 0; i <= 90; i += 7){
+      const px = toX(i), py = toY(data[i]);
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, TAU);
+      if(d.marker === "filled"){ ctx.fillStyle = d.color; ctx.fill(); }
+      else { ctx.strokeStyle = d.color; ctx.lineWidth = 1.8; ctx.fillStyle = BG; ctx.fill(); ctx.stroke(); }
+    }
+  }
+});
+
+// Labels
+ctx.setLineDash([]);
+ctx.font = "bold 13px 'Times New Roman', Georgia, serif";
+[
+  { text:"planophile",   deg:8,  key:"planophile",   offX:-22, offY:0 },
+  { text:"erectophile",  deg:8,  key:"erectophile",  offX:-22, offY:0 },
+  { text:"plagiophile",  deg:8,  key:"plagiophile",  offX:-22, offY:0 },
+  { text:"extremophile", deg:8,  key:"extremophile", offX:-22, offY:0 },
+  { text:"uniform",      deg:8,  key:"uniform",      offX:-22, offY:0 },
+  { text:"spherical",    deg:8,  key:"spherical",    offX:-22, offY:0 },
+].forEach(lp => {
+  const val = gData[lp.key][lp.deg];
+  const c = curves.find(cc => cc.key === lp.key);
+  ctx.fillStyle = c.color; ctx.textAlign = "right";
+  ctx.fillText(lp.text, toX(lp.deg)+lp.offX, toY(val)+lp.offY);
+});
+</script>
+</body>
+</html>
