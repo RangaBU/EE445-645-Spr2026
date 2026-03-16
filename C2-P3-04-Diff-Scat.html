@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bi-Lambertian Model — Leaf Cross-Section (Dark)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Source+Sans+3:wght@300;400;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0f0a;font-family:'Source Sans 3',sans-serif;color:#e0e8d8;overflow:hidden;height:100vh;width:100vw}
+  #canvas-container{width:100%;height:100%;position:relative}
+  canvas{display:block}
+  #overlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:10}
+  .title-block{position:absolute;top:20px;left:28px}
+  .title-block h1{font-family:'Playfair Display',serif;font-size:26px;color:#b8e986;letter-spacing:0.5px;text-shadow:0 2px 12px rgba(100,180,50,0.3)}
+  .title-block p{font-size:13px;color:#8a9a78;margin-top:3px;font-weight:400}
+  .legend{position:absolute;bottom:22px;left:28px;display:flex;flex-direction:column;gap:7px}
+  .legend-item{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:400;color:#ccc}
+  .legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:1px solid rgba(255,255,255,0.15)}
+  .controls-hint{position:absolute;bottom:22px;right:28px;font-size:11px;color:#5a6a4e;text-align:right;line-height:1.5}
+  .lbl3d{position:absolute;pointer-events:none;white-space:nowrap;font-weight:bold;text-shadow:0 0 10px rgba(0,0,0,0.95),0 0 5px rgba(0,0,0,0.9),0 0 20px rgba(0,0,0,0.7)}
+</style>
+</head>
+<body>
+<div id="canvas-container">
+  <div id="overlay">
+    <div class="title-block"><h1>Bi-Lambertian Model</h1><p>Leaf cross-section with diffuse reflection and transmission</p></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#ffe066"></div><span>Incoming sunlight</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#bb77ff"></div><span>Diffuse reflection ∝ ρ<sub>LD</sub></span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#bb77ff"></div><span>Transmission ∝ τ<sub>LD</sub></span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#44ccff"></div><span>Refraction at cell walls</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#66ff66"></div><span>Scattering from cell contents</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff4466"></div><span>Absorption by pigments</span></div>
+    </div>
+    <div class="controls-hint">Drag to rotate · Scroll to zoom · Right-drag to pan</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+var T={
+  bg:0x0a0f0a,
+  ambientInt:0.35, dirInt:0.9, dir2Int:0.4, dir3Int:0.25,
+  sun:0xffdd33,
+  diffuse:0xaa55ff, diffLabel:'#bb77ff', diffLabel2:'#9966cc',
+  scatter:0x66ff66, refract:0x44ccff, absorb:0xff4466,
+  lobe:0xbb77ff,
+  cuticle:0x334422, upperEpi:0x5a8a30, palisade:0x2d6e1e, chloro:0x88cc22,
+  spongy:0x6aad3a, air:0xd4eec4, lowerEpi:0x4a7a28, vein:0xc4a840,
+  layerColors:['#7a9a60','#7aaa50','#4da030','#6abc50','#5a9a38'],
+};
+
+var container=document.getElementById('canvas-container');
+var scene=new THREE.Scene();scene.background=new THREE.Color(T.bg);
+var camera=new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,0.1,500);
+var renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+container.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff,T.ambientInt));
+var tmp;
+tmp=new THREE.DirectionalLight(0xffffff,T.dirInt);tmp.position.set(-8,18,10);tmp.castShadow=true;scene.add(tmp);
+tmp=new THREE.DirectionalLight(0xffffff,T.dir2Int);tmp.position.set(8,10,-8);scene.add(tmp);
+tmp=new THREE.DirectionalLight(0xffffff,T.dir3Int);tmp.position.set(0,-8,0);scene.add(tmp);
+
+// Materials — semi-transparent so rays show through
+var cuticleMat=new THREE.MeshPhysicalMaterial({color:T.cuticle,roughness:0.2,clearcoat:0.8,clearcoatRoughness:0.1,transparent:true,opacity:0.35,side:THREE.DoubleSide,depthWrite:false});
+var upperEpiMat=new THREE.MeshPhysicalMaterial({color:T.upperEpi,roughness:0.4,transparent:true,opacity:0.45,depthWrite:false});
+var palisadeMat=new THREE.MeshPhysicalMaterial({color:T.palisade,roughness:0.5,transparent:true,opacity:0.35,depthWrite:false});
+var chloroMat=new THREE.MeshPhysicalMaterial({color:T.chloro,roughness:0.3,emissive:0x1a2a00,emissiveIntensity:0.15,transparent:true,opacity:0.5,depthWrite:false});
+var spongyMat=new THREE.MeshPhysicalMaterial({color:T.spongy,roughness:0.55,transparent:true,opacity:0.35,depthWrite:false});
+var airMat=new THREE.MeshPhysicalMaterial({color:T.air,roughness:0.9,transparent:true,opacity:0.06,depthWrite:false});
+var lowerEpiMat=new THREE.MeshPhysicalMaterial({color:T.lowerEpi,roughness:0.45,transparent:true,opacity:0.45,depthWrite:false});
+var veinMat=new THREE.MeshPhysicalMaterial({color:T.vein,roughness:0.4,metalness:0.05,transparent:true,opacity:0.5,depthWrite:false});
+
+var leafGroup=new THREE.Group();scene.add(leafGroup);
+var LW=20,LD=10,SURFACE_Y=5.6,BOTTOM_Y=-0.55;
+var UP=new THREE.Vector3(0,1,0);
+
+// Arrow — always on top (depthTest:false)
+function createArrow(start,end,color,sr,hr,hl){
+  sr=sr||0.05;hr=hr||0.16;hl=hl||0.45;
+  var g=new THREE.Group(),d=new THREE.Vector3().subVectors(end,start),tl=d.length();
+  if(tl<0.01)return g;
+  var sl=Math.max(0.01,tl-hl),dn=d.clone().normalize();
+  var q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dn);
+  var m=new THREE.MeshBasicMaterial({color:color,depthTest:false,transparent:true,opacity:0.95});
+  var shaft=new THREE.Mesh(new THREE.CylinderGeometry(sr,sr,sl,8),m);
+  shaft.position.copy(start).add(dn.clone().multiplyScalar(sl/2));shaft.quaternion.copy(q);shaft.renderOrder=10;g.add(shaft);
+  var head=new THREE.Mesh(new THREE.ConeGeometry(hr,hl,10),m.clone());
+  head.position.copy(start).add(dn.clone().multiplyScalar(sl+hl/2));head.quaternion.copy(q);head.renderOrder=10;g.add(head);
+  return g;
+}
+function createFadingArrow(start,end,color){
+  var g=new THREE.Group(),d=new THREE.Vector3().subVectors(end,start),tl=d.length();
+  if(tl<0.01)return g;
+  var dn=d.clone().normalize(),q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dn);
+  for(var i=0;i<6;i++){var t0=i/6,t1=(i+1)/6,p0=start.clone().lerp(end,t0),p1=start.clone().lerp(end,t1);
+    var seg=new THREE.Mesh(new THREE.CylinderGeometry(0.055*(1-t1*0.55),0.055*(1-t1*0.55),p0.distanceTo(p1),6),
+      new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:1-t1*0.85,depthTest:false}));
+    seg.position.copy(p0).add(p1).multiplyScalar(0.5);seg.quaternion.copy(q);seg.renderOrder=10;g.add(seg);}
+  var xMat=new THREE.MeshBasicMaterial({color:T.absorb,depthTest:false});
+  for(var r=0;r<2;r++){var xm=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.08,0.08),xMat);xm.position.copy(end);xm.rotation.z=r===0?Math.PI/4:-Math.PI/4;xm.renderOrder=11;g.add(xm);}
+  return g;
+}
+function scatterDot(x,y,z){var d=new THREE.Mesh(new THREE.SphereGeometry(0.14,6,6),new THREE.MeshBasicMaterial({color:T.scatter,depthTest:false}));d.position.set(x,y,z);d.renderOrder=11;leafGroup.add(d);}
+function refractDot(x,y,z){var d=new THREE.Mesh(new THREE.SphereGeometry(0.12,6,6),new THREE.MeshBasicMaterial({color:T.refract,depthTest:false}));d.position.set(x,y,z);d.renderOrder=11;leafGroup.add(d);}
+
+// ═══ LEAF ANATOMY ═══
+var palisadeCells=[],spongyCells=[],chloroplasts=[];
+var _m;
+_m=new THREE.Mesh(new THREE.BoxGeometry(LW,0.15,LD),cuticleMat);_m.position.set(0,5.5,0);leafGroup.add(_m);
+_m=new THREE.Mesh(new THREE.BoxGeometry(LW,0.6,LD),upperEpiMat);_m.position.set(0,5.1,0);leafGroup.add(_m);
+for(var x=-9;x<=9;x+=1.2)for(var z=-4;z<=4;z+=1.2){var c=new THREE.Mesh(new THREE.SphereGeometry(0.55,8,6,0,Math.PI*2,0,Math.PI/2),upperEpiMat);c.position.set(x+Math.random()*0.3,5.4,z+Math.random()*0.3);c.scale.y=0.4;leafGroup.add(c);}
+
+for(var x=-9;x<=9;x+=1.1)for(var z=-4;z<=4;z+=1.1){
+  var h=2.8+Math.random()*0.6,r=0.35+Math.random()*0.1;
+  var cell=new THREE.Mesh(new THREE.CylinderGeometry(r,r*0.9,h,8),palisadeMat);
+  var px=x+Math.random()*0.4-0.2,pz=z+Math.random()*0.4-0.2,cy=4.8-h/2-0.3;
+  cell.position.set(px,cy,pz);leafGroup.add(cell);
+  palisadeCells.push({x:px,y:cy,z:pz,h:h,r:r});
+  for(var ci=0;ci<5+Math.floor(Math.random()*5);ci++){
+    var cm=new THREE.Mesh(new THREE.SphereGeometry(0.12,6,4),chloroMat);
+    var a=Math.random()*Math.PI*2,rFrac=0.3+Math.random()*0.55;
+    var cx2=px+Math.cos(a)*r*rFrac,cy2=cy+(Math.random()-0.5)*h*0.8,cz2=pz+Math.sin(a)*r*rFrac;
+    cm.position.set(cx2,cy2,cz2);cm.scale.set(1,0.5,1);leafGroup.add(cm);
+    chloroplasts.push({x:cx2,y:cy2,z:cz2});
+  }
+}
+
+for(var x=-9;x<=9;x+=2.5)for(var z=-4;z<=4;z+=2.5){
+  for(var y=0.1;y<=2.8;y+=1.5){if(Math.random()>0.35){
+    var r=0.45+Math.random()*0.35;var cell=new THREE.Mesh(new THREE.SphereGeometry(r,7,5),spongyMat);
+    var sx2=x+(Math.random()-0.5)*1.8,sy2=y+(Math.random()-0.5)*0.7,sz2=z+(Math.random()-0.5)*1.8;
+    cell.position.set(sx2,sy2,sz2);cell.scale.set(1+Math.random()*0.5,0.6+Math.random()*0.4,1+Math.random()*0.5);leafGroup.add(cell);
+    spongyCells.push({x:sx2,y:sy2,z:sz2,r:r});
+    // Chloroplasts lining the spongy cell walls (always present, 3-6 per cell)
+    for(var cci=0;cci<3+Math.floor(Math.random()*4);cci++){
+      var ca=Math.random()*Math.PI*2,crad=r*0.6+Math.random()*r*0.2;
+      var ccx=sx2+Math.cos(ca)*crad*0.5,ccy=sy2+(Math.random()-0.5)*r*0.5,ccz=sz2+Math.sin(ca)*crad*0.5;
+      var cm=new THREE.Mesh(new THREE.SphereGeometry(0.09,5,4),chloroMat);cm.position.set(ccx,ccy,ccz);cm.scale.set(1,0.5,1);leafGroup.add(cm);
+      chloroplasts.push({x:ccx,y:ccy,z:ccz});
+    }
+  }}
+  if(Math.random()>0.4){var am=new THREE.Mesh(new THREE.SphereGeometry(0.5+Math.random()*0.4,6,4),airMat);am.position.set(x+(Math.random()-0.5)*1.5,0.1+Math.random()*2.7,z+(Math.random()-0.5)*1.5);leafGroup.add(am);}
+}
+
+var vp=new THREE.CatmullRomCurve3([new THREE.Vector3(-10,1.5,0),new THREE.Vector3(-4,1.3,0.5),new THREE.Vector3(0,1.2,0),new THREE.Vector3(4,1.3,-0.3),new THREE.Vector3(10,1.5,0)]);
+leafGroup.add(new THREE.Mesh(new THREE.TubeGeometry(vp,32,0.35,8,false),veinMat));
+for(var i=0;i<4;i++){var t=0.2+i*0.2,pt=vp.getPoint(t),dd=i%2===0?1:-1;leafGroup.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([pt,new THREE.Vector3(pt.x+1,pt.y+0.2,pt.z+dd*2),new THREE.Vector3(pt.x+2,pt.y+0.3,pt.z+dd*4)]),12,0.15,6,false),veinMat));}
+_m=new THREE.Mesh(new THREE.BoxGeometry(LW,0.5,LD),lowerEpiMat);_m.position.set(0,-0.2,0);leafGroup.add(_m);
+for(var i=0;i<10;i++){var sx=-8+Math.random()*16,sz=-3.5+Math.random()*7;for(var side=-1;side<=1;side+=2){var g=new THREE.Mesh(new THREE.TorusGeometry(0.25,0.08,6,12,Math.PI),new THREE.MeshPhysicalMaterial({color:0x3a7a20,roughness:0.4,transparent:true,opacity:0.5}));g.position.set(sx,-0.5,sz);g.rotation.x=Math.PI/2;g.rotation.z=side>0?0:Math.PI;g.scale.set(1,1,0.6);leafGroup.add(g);}}
+_m=new THREE.Mesh(new THREE.BoxGeometry(LW,0.1,LD),cuticleMat);_m.position.set(0,BOTTOM_Y,0);leafGroup.add(_m);
+
+// ═══ SUN ═══
+var sunPos=new THREE.Vector3(-8,16,0);
+_m=new THREE.Mesh(new THREE.SphereGeometry(0.9,16,16),new THREE.MeshBasicMaterial({color:T.sun}));_m.position.copy(sunPos);leafGroup.add(_m);
+var sr2=new THREE.Mesh(new THREE.RingGeometry(1.0,1.5,24),new THREE.MeshBasicMaterial({color:T.sun,transparent:true,opacity:0.25,side:THREE.DoubleSide}));sr2.position.copy(sunPos);leafGroup.add(sr2);
+
+// Incoming rays
+var diffHit=new THREE.Vector3(0,SURFACE_Y,0);
+[new THREE.Vector3(-1,SURFACE_Y,-1),diffHit,new THREE.Vector3(1,SURFACE_Y,1)].forEach(function(h){
+  var td=h.clone().sub(sunPos).normalize();
+  leafGroup.add(createArrow(sunPos.clone().add(td.clone().multiplyScalar(1.5)),h,T.sun,0.06,0.22,0.6));
+});
+
+// ═══ DIFFUSE REFLECTION ∝ ρLD ═══
+var rhoLD=0.45,tauLD=0.35,maxLenBase=8;
+(function(){
+  var origin=diffHit,ta=new THREE.Vector3(1,0,0),bi=new THREE.Vector3(0,0,1),ml=maxLenBase*rhoLD;
+  [[0,[0]],[Math.asin(Math.sqrt(0.15)),[0,Math.PI/2,Math.PI,Math.PI*1.5]],[Math.asin(Math.sqrt(0.4)),[Math.PI/4,Math.PI*3/4,Math.PI*5/4,Math.PI*7/4]],[Math.asin(Math.sqrt(0.7)),[0,Math.PI/3,Math.PI*2/3,Math.PI,Math.PI*4/3,Math.PI*5/3]],[Math.asin(Math.sqrt(0.92)),[Math.PI/6,Math.PI/2,Math.PI*5/6,Math.PI*7/6,Math.PI*3/2,Math.PI*11/6]]].forEach(function(p){var th=p[0],phs=p[1];phs.forEach(function(ph){
+    var dr=new THREE.Vector3().addScaledVector(UP,Math.cos(th)).addScaledVector(ta,Math.sin(th)*Math.cos(ph)).addScaledVector(bi,Math.sin(th)*Math.sin(ph)).normalize();
+    leafGroup.add(createArrow(origin,origin.clone().add(dr.clone().multiplyScalar(ml*Math.cos(th))),T.diffuse,0.03,0.11,0.32));
+  });});
+  // Cosine lobe outlines
+  for(var rot=0;rot<2;rot++){var pts=[];for(var ii=0;ii<=100;ii++){var ang=(ii/100)*Math.PI-Math.PI/2,rr=Math.cos(ang)*ml,x2=rr*Math.sin(ang),y2=rr*Math.cos(ang);if(rot===0)pts.push(new THREE.Vector3(origin.x+x2,origin.y+y2,origin.z));else pts.push(new THREE.Vector3(origin.x,origin.y+y2,origin.z+x2));}var cv=new THREE.CatmullRomCurve3(pts);leafGroup.add(new THREE.Mesh(new THREE.TubeGeometry(cv,60,0.06,4,false),new THREE.MeshBasicMaterial({color:T.lobe,transparent:true,opacity:0.6})));}
+  // TRANSPARENT SOLID cosine lobe — built as a surface of revolution
+  var lobePts=[];for(var ii=0;ii<=40;ii++){var ang=(ii/40)*Math.PI;var cosA=Math.cos(ang-Math.PI/2);var rr=Math.abs(cosA)*ml;var yy=cosA*cosA*ml*(ang<=Math.PI/2?1:1);lobePts.push(new THREE.Vector2(rr,origin.y+Math.cos(ang-Math.PI/2)*ml*Math.abs(Math.cos(ang-Math.PI/2))));}
+  // Use parametric approach: create a half-sphere scaled by cosine
+  var lobeGeo=new THREE.SphereGeometry(ml,32,24,0,Math.PI*2,0,Math.PI/2);
+  // Scale vertices to cosine lobe shape: r(θ)=ml*cos(θ), height=ml*cos²(θ)
+  var posAttr=lobeGeo.attributes.position;
+  for(var vi=0;vi<posAttr.count;vi++){
+    var vx=posAttr.getX(vi),vy=posAttr.getY(vi),vz=posAttr.getZ(vi);
+    var rOrig=Math.sqrt(vx*vx+vz*vz),yOrig=vy;
+    var theta2=Math.atan2(rOrig,yOrig); // polar angle from +Y
+    var cosT=Math.cos(theta2);
+    var lobeR=ml*cosT; // cosine lobe radius at this angle
+    var lobeH=ml*cosT*cosT; // height along normal
+    if(rOrig>0.001){var scale=lobeR/Math.sqrt(rOrig*rOrig+yOrig*yOrig)*Math.sqrt(lobeR*lobeR+lobeH*lobeH)/ml;
+      var phi2=Math.atan2(vz,vx);
+      posAttr.setXYZ(vi,Math.sin(theta2)*lobeR*Math.cos(phi2)+origin.x,lobeH+origin.y,Math.sin(theta2)*lobeR*Math.sin(phi2)+origin.z);
+    }else{posAttr.setXYZ(vi,origin.x,ml+origin.y,origin.z);}
+  }
+  lobeGeo.computeVertexNormals();
+  var lobeMesh=new THREE.Mesh(lobeGeo,new THREE.MeshBasicMaterial({color:T.lobe,transparent:true,opacity:0.08,side:THREE.DoubleSide,depthWrite:false}));
+  leafGroup.add(lobeMesh);
+})();
+
+// ═══ TRANSMISSION ∝ τLD ═══
+(function(){
+  var origin=new THREE.Vector3(0,BOTTOM_Y,0),dn2=new THREE.Vector3(0,-1,0),ta=new THREE.Vector3(1,0,0),bi=new THREE.Vector3(0,0,1),ml=maxLenBase*tauLD;
+  [[0,[0]],[Math.asin(Math.sqrt(0.15)),[0,Math.PI/2,Math.PI,Math.PI*1.5]],[Math.asin(Math.sqrt(0.45)),[Math.PI/4,Math.PI*3/4,Math.PI*5/4,Math.PI*7/4]],[Math.asin(Math.sqrt(0.75)),[0,Math.PI/3,Math.PI*2/3,Math.PI,Math.PI*4/3,Math.PI*5/3]],[Math.asin(Math.sqrt(0.93)),[Math.PI/6,Math.PI*5/6,Math.PI*7/6,Math.PI*11/6]]].forEach(function(p){var th=p[0],phs=p[1];phs.forEach(function(ph){
+    var dr=new THREE.Vector3().addScaledVector(dn2,Math.cos(th)).addScaledVector(ta,Math.sin(th)*Math.cos(ph)).addScaledVector(bi,Math.sin(th)*Math.sin(ph)).normalize();
+    leafGroup.add(createArrow(origin,origin.clone().add(dr.clone().multiplyScalar(ml*Math.cos(th))),T.diffuse,0.03,0.11,0.32));
+  });});
+  for(var rot=0;rot<2;rot++){var pts=[];for(var ii=0;ii<=100;ii++){var ang=(ii/100)*Math.PI-Math.PI/2,rr=Math.cos(ang)*ml,x2=rr*Math.sin(ang),y2=rr*Math.cos(ang);if(rot===0)pts.push(new THREE.Vector3(origin.x+x2,origin.y-y2,origin.z));else pts.push(new THREE.Vector3(origin.x,origin.y-y2,origin.z+x2));}var cv=new THREE.CatmullRomCurve3(pts);leafGroup.add(new THREE.Mesh(new THREE.TubeGeometry(cv,60,0.06,4,false),new THREE.MeshBasicMaterial({color:T.lobe,transparent:true,opacity:0.6})));}
+  // Transparent solid for transmission lobe (inverted)
+  var lobeGeo=new THREE.SphereGeometry(ml,32,24,0,Math.PI*2,0,Math.PI/2);
+  var posAttr=lobeGeo.attributes.position;
+  for(var vi=0;vi<posAttr.count;vi++){
+    var vx=posAttr.getX(vi),vy=posAttr.getY(vi),vz=posAttr.getZ(vi);
+    var rOrig=Math.sqrt(vx*vx+vz*vz),yOrig=vy;
+    var theta2=Math.atan2(rOrig,yOrig);
+    var cosT=Math.cos(theta2);
+    var lobeR=ml*cosT,lobeH=ml*cosT*cosT;
+    if(rOrig>0.001){var phi2=Math.atan2(vz,vx);
+      posAttr.setXYZ(vi,Math.sin(theta2)*lobeR*Math.cos(phi2)+origin.x,origin.y-lobeH,Math.sin(theta2)*lobeR*Math.sin(phi2)+origin.z);
+    }else{posAttr.setXYZ(vi,origin.x,origin.y-ml,origin.z);}
+  }
+  lobeGeo.computeVertexNormals();
+  leafGroup.add(new THREE.Mesh(lobeGeo,new THREE.MeshBasicMaterial({color:T.lobe,transparent:true,opacity:0.08,side:THREE.DoubleSide,depthWrite:false})));
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// INTERNAL INTERACTIONS — all rendered on top of cells
+// Refraction at cell walls, scattering from chloroplasts, absorption at pigments
+// ═══════════════════════════════════════════════════════════════
+var seed=42;function srand(){seed=(seed*16807+0)%2147483647;return(seed-1)/2147483646;}
+
+// === PALISADE: refraction at walls, scatter from chloroplasts ===
+// Select MANY cells — dense coverage
+var palSel=[];var palUsed={};
+for(var xi=-9;xi<=9;xi+=0.8){for(var zi=-3;zi<=3;zi+=2.0){
+  var best=null,bd=999;
+  for(var pi=0;pi<palisadeCells.length;pi++){
+    var key=pi+'';if(palUsed[key])continue;
+    var dd=Math.abs(palisadeCells[pi].x-xi)+Math.abs(palisadeCells[pi].z-zi);
+    if(dd<bd){bd=dd;best=pi;}
+  }
+  if(best!==null&&bd<1.5){palUsed[best+'']= true;palSel.push(palisadeCells[best]);}
+}}
+
+palSel.forEach(function(pc){
+  var topY=pc.y+pc.h/2,botY=pc.y-pc.h/2;
+  var ex=pc.x+(srand()-0.5)*0.15,ez=pc.z+(srand()-0.5)*0.15;
+  // Refraction entering top cell wall
+  leafGroup.add(createArrow(new THREE.Vector3(ex,topY+0.6,ez),new THREE.Vector3(ex,topY,ez),T.refract,0.04,0.12,0.25));
+  refractDot(ex,topY,ez);
+  // Bent path inside toward chloroplast
+  var bx=ex+(srand()-0.5)*0.3,bz=ez+(srand()-0.5)*0.3,by=pc.y+(srand()-0.5)*pc.h*0.4;
+  leafGroup.add(createArrow(new THREE.Vector3(ex,topY,ez),new THREE.Vector3(bx,by,bz),T.refract,0.035,0.1,0.22));
+  // Scatter at chloroplast — BIG direction change
+  scatterDot(bx,by,bz);
+  // ~60% of scattering goes UPWARD (ρ > τ), rest sideways/down
+  var goUp=srand()<0.6;
+  var sx,sy,sz;
+  if(goUp){
+    // Scatter upward — large angular change
+    sx=bx+(srand()-0.5)*1.2;
+    sz=bz+(srand()-0.5)*1.2;
+    sy=by+0.5+srand()*1.2;
+  }else{
+    // Scatter sideways or down
+    sx=bx+(srand()-0.5)*1.5;
+    sz=bz+(srand()-0.5)*1.5;
+    sy=by-0.3+(srand()-0.5)*1.0;
+  }
+  leafGroup.add(createArrow(new THREE.Vector3(bx,by,bz),new THREE.Vector3(sx,sy,sz),T.scatter,0.035,0.1,0.22));
+  // Second scatter — again biased upward
+  if(srand()>0.3){
+    scatterDot(sx,sy,sz);
+    var goUp2=srand()<0.55;
+    var s2x=sx+(srand()-0.5)*1.0,s2z=sz+(srand()-0.5)*1.0;
+    var s2y=goUp2?sy+0.4+srand()*0.8:sy-0.3-srand()*0.8;
+    leafGroup.add(createArrow(new THREE.Vector3(sx,sy,sz),new THREE.Vector3(s2x,s2y,s2z),T.scatter,0.03,0.09,0.2));
+    // Third scatter for some
+    if(srand()>0.5){
+      scatterDot(s2x,s2y,s2z);
+      var goUp3=srand()<0.5;
+      var s3x=s2x+(srand()-0.5)*0.8,s3z=s2z+(srand()-0.5)*0.8;
+      var s3y=goUp3?s2y+0.3+srand()*0.6:s2y-0.2-srand()*0.6;
+      leafGroup.add(createArrow(new THREE.Vector3(s2x,s2y,s2z),new THREE.Vector3(s3x,s3y,s3z),T.scatter,0.025,0.08,0.18));
+    }
+  }
+  // Refraction exiting bottom wall for downward-going paths
+  if(!goUp&&srand()>0.4){var ox=pc.x+(srand()-0.5)*0.2,oz=pc.z+(srand()-0.5)*0.2;leafGroup.add(createArrow(new THREE.Vector3(sx,sy,sz),new THREE.Vector3(ox,botY,oz),T.refract,0.03,0.1,0.22));refractDot(ox,botY,oz);}
+});
+
+// === SPONGY: refraction at cell walls, scattering inside ===
+var spSel=[];var spUsed={};
+for(var xi=-8;xi<=8;xi+=1.5){for(var zi=-3;zi<=3;zi+=2.5){
+  var best=null,bd=999;
+  for(var si=0;si<spongyCells.length;si++){
+    var key=si+'';if(spUsed[key])continue;
+    var dd=Math.abs(spongyCells[si].x-xi)+Math.abs(spongyCells[si].z-zi);
+    if(dd<bd){bd=dd;best=si;}
+  }
+  if(best!==null&&bd<2.5){spUsed[best+'']= true;spSel.push(spongyCells[best]);}
+}}
+
+spSel.forEach(function(sc){
+  var wy=sc.y+sc.r*0.5;var ex=sc.x+(srand()-0.5)*0.3,ez=sc.z+(srand()-0.5)*0.3;
+  leafGroup.add(createArrow(new THREE.Vector3(ex,wy+0.5,ez),new THREE.Vector3(ex,wy,ez),T.refract,0.035,0.1,0.22));
+  refractDot(ex,wy,ez);
+  // Scatter inside — big direction change
+  var sx=sc.x+(srand()-0.5)*0.6,sz=sc.z+(srand()-0.5)*0.6,sy=sc.y+(srand()-0.5)*0.4;
+  leafGroup.add(createArrow(new THREE.Vector3(ex,wy,ez),new THREE.Vector3(sx,sy,sz),T.scatter,0.03,0.09,0.2));
+  scatterDot(sx,sy,sz);
+  // Second scatter — large direction change, biased upward
+  var goUp=srand()<0.55;
+  var ox=sx+(srand()-0.5)*1.2,oz=sz+(srand()-0.5)*1.2;
+  var oy=goUp?sy+0.4+srand()*0.8:sy-0.4-srand()*0.6;
+  leafGroup.add(createArrow(new THREE.Vector3(sx,sy,sz),new THREE.Vector3(ox,oy,oz),T.scatter,0.03,0.09,0.2));
+  if(srand()>0.4){
+    scatterDot(ox,oy,oz);
+    var goUp2=srand()<0.5;
+    var e2x=ox+(srand()-0.5)*0.9,e2z=oz+(srand()-0.5)*0.9;
+    var e2y=goUp2?oy+0.3+srand()*0.7:oy-0.3-srand()*0.5;
+    leafGroup.add(createArrow(new THREE.Vector3(ox,oy,oz),new THREE.Vector3(e2x,e2y,e2z),T.scatter,0.025,0.08,0.18));
+  }
+});
+
+// Extra refraction at spongy air-cell interfaces
+for(var ei=0;ei<spongyCells.length;ei++){
+  if(srand()>0.6)continue;var sc=spongyCells[ei];var sd=srand()>0.5?1:-1;
+  var wx=sc.x+sd*sc.r*0.6,wy=sc.y,wz=sc.z+(srand()-0.5)*sc.r*0.5;
+  leafGroup.add(createArrow(new THREE.Vector3(wx+sd*0.4,wy+0.2,wz),new THREE.Vector3(wx,wy,wz),T.refract,0.025,0.08,0.18));
+  refractDot(wx,wy,wz);
+  leafGroup.add(createArrow(new THREE.Vector3(wx,wy,wz),new THREE.Vector3(wx-sd*0.3,wy-0.3,wz+(srand()-0.5)*0.3),T.refract,0.025,0.08,0.18));
+}
+
+// === ABSORPTION at chloroplast pigments — many events ===
+var absSel=[];var absUsed={};
+for(var xi=-9;xi<=9;xi+=1.0){for(var zi=-3;zi<=3;zi+=2.0){
+  var best=null,bd=999;
+  for(var ci=0;ci<chloroplasts.length;ci++){
+    var key=ci+'';if(absUsed[key])continue;
+    var dd=Math.abs(chloroplasts[ci].x-xi)+Math.abs(chloroplasts[ci].z-zi)*0.5;
+    if(dd<bd){bd=dd;best=ci;}
+  }
+  if(best!==null&&bd<1.5){absUsed[best+'']= true;absSel.push(chloroplasts[best]);}
+}}
+absSel.forEach(function(ch){
+  var fy=ch.y+0.6+srand()*0.3,fx=ch.x+(srand()-0.5)*0.3,fz=ch.z+(srand()-0.5)*0.3;
+  leafGroup.add(createFadingArrow(new THREE.Vector3(fx,fy,fz),new THREE.Vector3(ch.x,ch.y,ch.z),T.absorb));
+});
+
+// ═══ HTML LABELS ═══
+var labels3d=[];
+function addLabel(html,pos3d,color,fontSize){
+  var el=document.createElement('div');el.className='lbl3d';el.innerHTML=html;
+  el.style.color=color;el.style.fontSize=fontSize+'px';el.style.fontFamily='serif';
+  container.appendChild(el);labels3d.push({el:el,pos:pos3d.clone()});
+}
+
+addLabel('Cuticle',new THREE.Vector3(14,5.6,0),T.layerColors[0],17);
+addLabel('Upper Epidermis',new THREE.Vector3(16,5.0,0),T.layerColors[1],17);
+addLabel('Palisade Mesophyll',new THREE.Vector3(16.5,3.5,0),T.layerColors[2],17);
+addLabel('Spongy Mesophyll',new THREE.Vector3(16,1.5,0),T.layerColors[3],17);
+addLabel('Lower Epidermis',new THREE.Vector3(16,-0.2,0),T.layerColors[4],17);
+
+// ρLD and τLD labels next to the Lambertian lobe curves
+var rhoML=maxLenBase*rhoLD,tauML=maxLenBase*tauLD;
+addLabel('Diffuse Reflection',new THREE.Vector3(rhoML*0.6+2,SURFACE_Y+rhoML*0.7,0),T.diffLabel,20);
+addLabel('∝ ρ<sub>LD</sub>',new THREE.Vector3(rhoML*0.6+2,SURFACE_Y+rhoML*0.45,0),T.diffLabel2,18);
+
+addLabel('Transmission',new THREE.Vector3(tauML*0.6+2,BOTTOM_Y-tauML*0.7,0),T.diffLabel,20);
+addLabel('∝ τ<sub>LD</sub>',new THREE.Vector3(tauML*0.6+2,BOTTOM_Y-tauML*0.45,0),T.diffLabel2,18);
+
+addLabel('Scattering',new THREE.Vector3(0,3.0,7),'#66ff66',17);
+addLabel('Refraction',new THREE.Vector3(-5,3.0,6),'#44ccff',17);
+addLabel('Absorption',new THREE.Vector3(5,3.0,6),'#ff4466',17);
+
+function projectLabels(){
+  var cw=container.clientWidth,ch=container.clientHeight;
+  labels3d.forEach(function(lb){
+    var v=lb.pos.clone().project(camera);
+    if(v.z>1){lb.el.style.display='none';return;}
+    lb.el.style.display='';
+    lb.el.style.left=((v.x*0.5+0.5)*cw)+'px';
+    lb.el.style.top=((-v.y*0.5+0.5)*ch)+'px';
+    lb.el.style.transform='translate(-50%,-50%)';
+  });
+}
+
+// ═══ CAMERA ═══
+var isDown=false,isRight=false,prevX=0,prevY=0,theta=0.5,phi=0.82,radius=40,panX=0,panY=2.5;
+function updateCamera(){camera.position.set(radius*Math.sin(phi)*Math.cos(theta)+panX,radius*Math.cos(phi)+panY,radius*Math.sin(phi)*Math.sin(theta));camera.lookAt(panX,panY,0);}
+updateCamera();
+function renderOnce(){renderer.render(scene,camera);projectLabels();}
+renderer.domElement.addEventListener('mousedown',function(e){if(e.button===0)isDown=true;if(e.button===2)isRight=true;prevX=e.clientX;prevY=e.clientY;});
+renderer.domElement.addEventListener('mousemove',function(e){if(isDown){theta-=(e.clientX-prevX)*0.005;phi=Math.max(0.2,Math.min(Math.PI-0.2,phi+(e.clientY-prevY)*0.005));updateCamera();renderOnce();}if(isRight){panX-=(e.clientX-prevX)*0.03;panY+=(e.clientY-prevY)*0.03;updateCamera();renderOnce();}prevX=e.clientX;prevY=e.clientY;});
+window.addEventListener('mouseup',function(){isDown=false;isRight=false;});
+renderer.domElement.addEventListener('contextmenu',function(e){e.preventDefault();});
+renderer.domElement.addEventListener('wheel',function(e){radius=Math.max(12,Math.min(70,radius+e.deltaY*0.03));updateCamera();renderOnce();});
+var ts=null,tsd=null;
+renderer.domElement.addEventListener('touchstart',function(e){if(e.touches.length===1)ts={x:e.touches[0].clientX,y:e.touches[0].clientY};else if(e.touches.length===2){var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;tsd=Math.sqrt(dx*dx+dy*dy);}});
+renderer.domElement.addEventListener('touchmove',function(e){e.preventDefault();if(e.touches.length===1&&ts){theta-=(e.touches[0].clientX-ts.x)*0.005;phi=Math.max(0.2,Math.min(Math.PI-0.2,phi+(e.touches[0].clientY-ts.y)*0.005));ts={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCamera();renderOnce();}else if(e.touches.length===2&&tsd){var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY,d=Math.sqrt(dx*dx+dy*dy);radius=Math.max(12,Math.min(70,radius-(d-tsd)*0.05));tsd=d;updateCamera();renderOnce();}},{passive:false});
+renderOnce();
+window.addEventListener('resize',function(){camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);renderOnce();});
+</script>
+</body>
+</html>
