@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leaf Scattering — Four Cases</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Source+Sans+3:wght@300;400;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0f0a;font-family:'Source Sans 3',sans-serif;overflow:hidden;height:100vh;width:100vw}
+  .grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:100vw;height:100vh}
+  .cell{position:relative;overflow:hidden;border:1px solid #1a2a1a}
+  .cell canvas{display:block;width:100%;height:100%}
+  /* Fixed header labels */
+  .hdr{position:absolute;bottom:32px;left:10px;pointer-events:none;z-index:10}
+  .hdr h2{font-family:'Playfair Display',serif;font-size:15px;color:#b8e986;margin-bottom:1px}
+  .hdr p{font-size:11px;color:#8a9a78;line-height:1.3}
+  .feq{position:absolute;bottom:5px;left:10px;pointer-events:none;z-index:10;font-size:11.5px;color:#aaa;line-height:1.5}
+  /* Projected 3D labels */
+  .lbl3d{position:absolute;pointer-events:none;white-space:nowrap;font-weight:bold;text-shadow:0 0 8px rgba(0,0,0,0.95),0 0 3px rgba(0,0,0,0.9)}
+  .mt{position:fixed;top:0;left:0;right:0;text-align:center;padding:5px 0 3px;z-index:20;pointer-events:none;background:linear-gradient(to bottom,rgba(10,15,10,0.92),transparent)}
+  .mt h1{font-family:'Playfair Display',serif;font-size:19px;color:#b8e986}
+  .mt span{font-size:11px;color:#6a7a5e}
+  .ht{position:fixed;bottom:3px;right:10px;font-size:10px;color:#4a5a3e;z-index:20;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="mt"><h1>Leaf Scattering Phase Function</h1><span>Reflection &amp; transmission · Adaxial (upper) and abaxial (lower) incidence</span></div>
+<div class="ht">Drag to rotate · Scroll to zoom</div>
+<div class="grid">
+  <div class="cell" id="c0">
+    <div class="hdr"><h2>ρ⁻<sub>L</sub> — Adaxial Reflection</h2><p>Incidence on upper face, reflected upward</p></div>
+    <div class="feq">(Ω'·Ω<sub>L</sub>) &lt; 0 &nbsp; (Ω·Ω<sub>L</sub>) &gt; 0</div>
+  </div>
+  <div class="cell" id="c1">
+    <div class="hdr"><h2>τ⁻<sub>L</sub> — Adaxial Transmission</h2><p>Incidence on upper face, transmitted downward</p></div>
+    <div class="feq">(Ω'·Ω<sub>L</sub>) &lt; 0 &nbsp; (Ω·Ω<sub>L</sub>) &lt; 0</div>
+  </div>
+  <div class="cell" id="c2">
+    <div class="hdr"><h2>ρ⁺<sub>L</sub> — Abaxial Reflection</h2><p>Incidence on lower face, reflected downward</p></div>
+    <div class="feq">(Ω'·Ω<sub>L</sub>) &gt; 0 &nbsp; (Ω·Ω<sub>L</sub>) &lt; 0</div>
+  </div>
+  <div class="cell" id="c3">
+    <div class="hdr"><h2>τ⁺<sub>L</sub> — Abaxial Transmission</h2><p>Incidence on lower face, transmitted upward</p></div>
+    <div class="feq">(Ω'·Ω<sub>L</sub>) &gt; 0 &nbsp; (Ω·Ω<sub>L</sub>) &gt; 0</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══ BUILD ONE PANEL ═══
+function buildPanel(cellId,fromAbove,outAbove){
+  var cell=document.getElementById(cellId);
+  var w=cell.clientWidth,h=cell.clientHeight;
+  var scene=new THREE.Scene();scene.background=new THREE.Color(0x0a0f0a);
+  var camera=new THREE.PerspectiveCamera(38,w/h,0.1,500);
+  var ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setSize(w,h);ren.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  ren.toneMapping=THREE.ACESFilmicToneMapping;ren.toneMappingExposure=1.1;
+  cell.appendChild(ren.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.35));
+  var d1=new THREE.DirectionalLight(0xffffff,0.65);d1.position.set(-5,12,8);scene.add(d1);
+  var d2=new THREE.DirectionalLight(0xffffff,0.25);d2.position.set(5,5,-8);scene.add(d2);
+
+  var grp=new THREE.Group();scene.add(grp);
+  var O=new THREE.Vector3(0,0,0);
+
+  function mkArrow(s,e,c,sr,hr,hl){
+    sr=sr||0.045;hr=hr||0.14;hl=hl||0.38;
+    var g=new THREE.Group(),d=new THREE.Vector3().subVectors(e,s),tl=d.length();
+    if(tl<0.01)return g;var sl=Math.max(0.01,tl-hl),dn=d.clone().normalize();
+    var q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dn);
+    var m=new THREE.MeshBasicMaterial({color:c});
+    var sh=new THREE.Mesh(new THREE.CylinderGeometry(sr,sr,sl,8),m);
+    sh.position.copy(s).add(dn.clone().multiplyScalar(sl/2));sh.quaternion.copy(q);g.add(sh);
+    var hd=new THREE.Mesh(new THREE.ConeGeometry(hr,hl,10),m.clone());
+    hd.position.copy(s).add(dn.clone().multiplyScalar(sl+hl/2));hd.quaternion.copy(q);g.add(hd);
+    return g;
+  }
+
+  // Dashed surface
+  var dp1=[];for(var i=-6;i<=6;i+=0.01)dp1.push(new THREE.Vector3(i,0,0));
+  var sl1=new THREE.Line(new THREE.BufferGeometry().setFromPoints(dp1),new THREE.LineDashedMaterial({color:0x777777,dashSize:0.35,gapSize:0.18,transparent:true,opacity:0.6}));
+  sl1.computeLineDistances();grp.add(sl1);
+  var dp2=[];for(var i=-4;i<=4;i+=0.01)dp2.push(new THREE.Vector3(0,0,i));
+  var sl2=new THREE.Line(new THREE.BufferGeometry().setFromPoints(dp2),new THREE.LineDashedMaterial({color:0x777777,dashSize:0.35,gapSize:0.18,transparent:true,opacity:0.3}));
+  sl2.computeLineDistances();grp.add(sl2);
+
+  // Leaf
+  var lg=new THREE.PlaneGeometry(2.6,0.95);
+  var lm=new THREE.Mesh(lg,new THREE.MeshBasicMaterial({color:0x44bb66,transparent:true,opacity:0.45,side:THREE.DoubleSide}));
+  lm.rotation.x=-Math.PI/2;lm.rotation.z=0.15;lm.position.set(0.7,-0.02,0.25);grp.add(lm);
+  var le=new THREE.LineSegments(new THREE.EdgesGeometry(lg),new THREE.LineBasicMaterial({color:0x44bb66,transparent:true,opacity:0.7}));
+  le.rotation.x=-Math.PI/2;le.rotation.z=0.15;le.position.set(0.7,-0.02,0.25);grp.add(le);
+
+  // Hemisphere
+  var hR=3.2;
+  grp.add(new THREE.Mesh(new THREE.SphereGeometry(hR,40,20,0,Math.PI*2,0,Math.PI/2),
+    new THREE.MeshBasicMaterial({color:0x334466,transparent:true,opacity:0.12,side:THREE.DoubleSide})));
+  var cp=[];for(var i=0;i<=80;i++){var a=(i/80)*Math.PI*2;cp.push(new THREE.Vector3(Math.cos(a)*hR,0,Math.sin(a)*hR));}
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cp),80,0.02,4,true),
+    new THREE.MeshBasicMaterial({color:0x6688cc,transparent:true,opacity:0.4})));
+  for(var p=0;p<4;p++){var pts=[];var ang=p*Math.PI/4;
+    for(var j=0;j<=40;j++){var th=(j/40)*Math.PI/2;pts.push(new THREE.Vector3(Math.sin(th)*Math.cos(ang)*hR,Math.cos(th)*hR,Math.sin(th)*Math.sin(ang)*hR));}
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:0x6688cc,transparent:true,opacity:0.1})));}
+
+  // Vertical dashed
+  var vp=[];for(var i=-50;i<=80;i++)vp.push(new THREE.Vector3(0,(i/80)*5.5,0));
+  var vl=new THREE.Line(new THREE.BufferGeometry().setFromPoints(vp),new THREE.LineDashedMaterial({color:0xaaaaaa,dashSize:0.35,gapSize:0.18,transparent:true,opacity:0.5}));
+  vl.computeLineDistances();grp.add(vl);
+
+  // ΩL arrow
+  grp.add(mkArrow(O,new THREE.Vector3(0,3.8,0),0xdddddd,0.05,0.16,0.42));
+
+  // Ω' incoming
+  var opDir=fromAbove?new THREE.Vector3(-0.5,0.78,0.2).normalize():new THREE.Vector3(-0.5,-0.78,0.2).normalize();
+  var opTip=O.clone().add(opDir.clone().multiplyScalar(2.9));
+  grp.add(mkArrow(opTip,O.clone().add(opDir.clone().multiplyScalar(0.15)),0xffaa33,0.05,0.15,0.4));
+
+  // Ω scattered
+  var orDir=outAbove?new THREE.Vector3(-0.72,0.6,0.35).normalize():new THREE.Vector3(-0.72,-0.6,0.35).normalize();
+  var orEnd=O.clone().add(orDir.clone().multiplyScalar(3.2));
+  grp.add(mkArrow(O,orEnd,0xff4488,0.05,0.15,0.4));
+
+  // Solid angle cone
+  var cone=new THREE.Mesh(new THREE.ConeGeometry(0.2,0.5,10,1,true),
+    new THREE.MeshBasicMaterial({color:0xff4488,transparent:true,opacity:0.15,side:THREE.DoubleSide}));
+  cone.position.copy(O.clone().add(orDir.clone().multiplyScalar(2.3)));
+  cone.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),orDir));
+  grp.add(cone);
+
+  // ═══ HTML OVERLAY LABELS (fixed size) ═══
+  var labels=[];
+  var primeSign=fromAbove?' &lt; 0':' &gt; 0';
+  var outSign=outAbove?' &gt; 0':' &lt; 0';
+
+  function addLabel(html,pos3d,color,fontSize,offsetX,offsetY){
+    var el=document.createElement('div');
+    el.className='lbl3d';
+    el.innerHTML=html;
+    el.style.color=color;
+    el.style.fontSize=fontSize+'px';
+    el.style.fontFamily='serif';
+    cell.appendChild(el);
+    labels.push({el:el,pos:pos3d.clone(),ox:offsetX||0,oy:offsetY||0});
+  }
+
+  // ΩL
+  addLabel('<b>Ω</b><sub>L</sub>',new THREE.Vector3(0,4.3,0),'#dddddd',18,0,0);
+  // Ω'
+  var opLblPos=opTip.clone().add(fromAbove?new THREE.Vector3(0.3,0.2,0):new THREE.Vector3(0.3,-0.2,0));
+  addLabel("<b>Ω'</b>",opLblPos,'#ffaa33',18,0,0);
+  // Ω scattered
+  var orLblPos=orEnd.clone().add(outAbove?new THREE.Vector3(-0.3,0.2,0):new THREE.Vector3(-0.3,-0.2,0));
+  addLabel('<b>Ω</b>',orLblPos,'#ff4488',18,0,0);
+  // dσL
+  addLabel('<b>dσ</b><sub>L</sub>',new THREE.Vector3(2.3,-0.2,0.8),'#55dd77',15,0,0);
+  // ADAXIAL / ABAXIAL
+  addLabel('ADAXIAL (−)',new THREE.Vector3(-4.5,0.5,0),'#aaaaaa',13,0,0);
+  addLabel('ABAXIAL (+)',new THREE.Vector3(-4.5,-0.5,0),'#777777',13,0,0);
+  // Condition: (Ω'·ΩL) < 0
+  var condPrimePos=opTip.clone().add(fromAbove?new THREE.Vector3(0.3,-0.3,0):new THREE.Vector3(0.3,0.3,0));
+  addLabel("(Ω'·Ω<sub>L</sub>)"+primeSign,condPrimePos,'#ffaa33',12,0,0);
+  // Condition: (Ω·ΩL) > 0
+  var condOutPos=orEnd.clone().add(outAbove?new THREE.Vector3(-0.3,-0.15,0):new THREE.Vector3(-0.3,0.2,0));
+  addLabel("(Ω·Ω<sub>L</sub>)"+outSign,condOutPos,'#ff4488',12,0,0);
+
+  // ═══ PROJECT LABELS ═══
+  function projectLabels(){
+    var cw=cell.clientWidth,ch=cell.clientHeight;
+    labels.forEach(function(lb){
+      var v=lb.pos.clone().project(camera);
+      var x=(v.x*0.5+0.5)*cw+lb.ox;
+      var y=(-v.y*0.5+0.5)*ch+lb.oy;
+      // Hide if behind camera
+      if(v.z>1){lb.el.style.display='none';return;}
+      lb.el.style.display='';
+      lb.el.style.left=x+'px';
+      lb.el.style.top=y+'px';
+      lb.el.style.transform='translate(-50%,-50%)';
+    });
+  }
+
+  // ═══ CAMERA ═══
+  var isD=false,pX=0,pY=0,cTh=-0.35,cPh=0.85,cR=13,cPanX=0,cPanY=0.8;
+  function uc(){
+    camera.position.set(cR*Math.sin(cPh)*Math.cos(cTh)+cPanX,cR*Math.cos(cPh)+cPanY,cR*Math.sin(cPh)*Math.sin(cTh));
+    camera.lookAt(cPanX,cPanY,0);
+  }
+  uc();
+  function rd(){ren.render(scene,camera);projectLabels();}
+
+  ren.domElement.addEventListener('mousedown',function(e){isD=true;pX=e.clientX;pY=e.clientY;});
+  ren.domElement.addEventListener('mousemove',function(e){
+    if(isD){cTh-=(e.clientX-pX)*0.006;cPh=Math.max(0.15,Math.min(Math.PI-0.15,cPh+(e.clientY-pY)*0.006));uc();rd();}
+    pX=e.clientX;pY=e.clientY;
+  });
+  window.addEventListener('mouseup',function(){isD=false;});
+  ren.domElement.addEventListener('contextmenu',function(e){e.preventDefault();});
+  ren.domElement.addEventListener('wheel',function(e){cR=Math.max(5,Math.min(25,cR+e.deltaY*0.015));uc();rd();},{passive:true});
+
+  rd();
+  return {camera:camera,renderer:ren,render:rd,cell:cell,projectLabels:projectLabels};
+}
+
+// ═══ BUILD ALL 4 ═══
+var panels=[];
+panels.push(buildPanel('c0',true,true));
+panels.push(buildPanel('c1',true,false));
+panels.push(buildPanel('c2',false,false));
+panels.push(buildPanel('c3',false,true));
+
+window.addEventListener('resize',function(){
+  panels.forEach(function(p){
+    var w=p.cell.clientWidth,h=p.cell.clientHeight;
+    p.camera.aspect=w/h;p.camera.updateProjectionMatrix();
+    p.renderer.setSize(w,h);p.render();
+  });
+});
+</script>
+</body>
+</html>
