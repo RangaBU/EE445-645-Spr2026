@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Differential Scattering Coefficient: Two Ways to Count</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #f7f5f0;
+    font-family: 'Times New Roman', Times, serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .container {
+    width: 1200px;
+    max-width: 100%;
+  }
+
+  .panels {
+    display: flex;
+    gap: 28px;
+    margin-bottom: 24px;
+  }
+
+  .panel {
+    flex: 1;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 16px 20px 10px;
+    text-align: center;
+  }
+
+  .panel-title {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.3;
+  }
+
+  .panel-body {
+    padding: 0 12px 12px;
+  }
+
+  .equation-bar {
+    text-align: center;
+    padding: 14px 16px;
+    margin: 0 8px 10px;
+    background: #fafaf7;
+    border-radius: 4px;
+    border: 1px solid #e8e6e0;
+  }
+
+  .equation-bar .eq-text {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 18px;
+    color: #222;
+    line-height: 1.6;
+  }
+
+  .equation-bar .eq-text .highlight-green { color: #2c5f2d; font-weight: 700; }
+  .equation-bar .eq-text .highlight-blue { color: #065a82; font-weight: 700; }
+
+  .sigma-inline {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    line-height: 1;
+    margin: 0 3px;
+    position: relative;
+    top: -2px;
+  }
+  .sigma-inline .sigma-top { font-size: 13px; line-height: 1; font-style: italic; }
+  .sigma-inline .sigma-sym { font-size: 28px; line-height: 0.85; }
+  .sigma-inline .sigma-bot { font-size: 12px; line-height: 1; font-style: italic; }
+
+  .int-inline {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    line-height: 1;
+    margin: 0 2px;
+    position: relative;
+    top: -2px;
+  }
+  .int-inline .int-top { font-size: 12px; line-height: 1; visibility: hidden; }
+  .int-inline .int-sym { font-size: 28px; line-height: 0.85; }
+  .int-inline .int-bot { font-size: 12px; line-height: 1; }
+
+  .caption-box {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+    padding: 20px 26px;
+  }
+
+  .caption-label {
+    font-family: 'Times New Roman', Times, serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 8px;
+  }
+
+  .caption-text {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 18px;
+    line-height: 1.55;
+    color: #222;
+  }
+
+  .caption-text strong { font-weight: 700; }
+  .caption-text .green { color: #2c5f2d; font-weight: 700; }
+  .caption-text .blue { color: #065a82; font-weight: 700; }
+
+  svg text {
+    font-family: 'Times New Roman', Times, serif;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="panels">
+
+<!-- ====================== LEFT PANEL ====================== -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">Sum over <em>N</em> Leaf Elements</div>
+  </div>
+  <div class="panel-body">
+    <svg viewBox="0 0 520 470" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowBeamA" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#c8a415"/>
+        </marker>
+        <marker id="arrowNormA" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#ffffff"/>
+        </marker>
+        <marker id="arrowScatA" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#3399dd"/>
+        </marker>
+        <linearGradient id="shadowPlaneA" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c49562" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#c49562" stop-opacity="0.08"/>
+        </linearGradient>
+        <radialGradient id="volBgA" cx="50%" cy="40%" r="55%">
+          <stop offset="0%" stop-color="#1a2e1a" stop-opacity="0.92"/>
+          <stop offset="100%" stop-color="#0d170d" stop-opacity="0.97"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Incident beam Ω′ -->
+      <line x1="340" y1="14" x2="340" y2="68" stroke="#c8a415" stroke-width="2.2" marker-end="url(#arrowBeamA)"/>
+      <line x1="360" y1="14" x2="360" y2="68" stroke="#c8a415" stroke-width="2.2" marker-end="url(#arrowBeamA)"/>
+      <line x1="380" y1="14" x2="380" y2="68" stroke="#c8a415" stroke-width="2.2" marker-end="url(#arrowBeamA)"/>
+      <text x="398" y="32" font-size="20" font-weight="700" fill="#b8940f">&#937;&#8242;</text>
+
+      <!-- Scattered direction Ω label at top right -->
+      <line x1="440" y1="95" x2="478" y2="60" stroke="#3399dd" stroke-width="2" marker-end="url(#arrowScatA)"/>
+      <text x="482" y="55" font-size="18" font-weight="700" fill="#2277bb">&#937;</text>
+
+      <!-- Volume box -->
+      <path d="M180,88 L448,88 L448,310 L180,310 Z" fill="url(#volBgA)" stroke="#3a5a3a" stroke-width="1.2"/>
+      <path d="M180,88 L220,68 L488,68 L448,88 Z" fill="#1e3a1e" stroke="#3a5a3a" stroke-width="1" opacity="0.7"/>
+      <path d="M448,88 L488,68 L488,290 L448,310 Z" fill="#152a15" stroke="#3a5a3a" stroke-width="1" opacity="0.6"/>
+
+      <!-- Leaf 1 with scattering interaction -->
+      <g transform="translate(240,130) rotate(-25)">
+        <ellipse cx="0" cy="0" rx="22" ry="8" fill="#4a9e4a" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-8" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10" dy="2">1</tspan></text>
+      </g>
+      <!-- Normal -->
+      <line x1="240" y1="130" x2="224" y2="98" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+      <text x="198" y="95" font-size="14" fill="#ffffff" font-weight="700">&#937;<tspan font-size="10" dy="3">L1</tspan></text>
+      <!-- Ω′ arriving -->
+      <line x1="240" y1="100" x2="240" y2="126" stroke="#c8a415" stroke-width="1.8" marker-end="url(#arrowBeamA)" opacity="0.7"/>
+      <!-- Ω scattered -->
+      <line x1="240" y1="130" x2="212" y2="106" stroke="#3399dd" stroke-width="1.8" marker-end="url(#arrowScatA)" opacity="0.8"/>
+      <!-- Phase function label — below/left of leaf -->
+      <text x="210" y="146" font-size="11" fill="#3399dd" font-weight="700" font-style="italic">&#947;<tspan font-size="8" font-style="normal" dy="2">L1</tspan></text>
+
+      <!-- Leaf 2 with scattering interaction -->
+      <g transform="translate(350,148) rotate(15)">
+        <ellipse cx="0" cy="0" rx="20" ry="7" fill="#5aad5a" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-8" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10" dy="2">2</tspan></text>
+      </g>
+      <line x1="350" y1="148" x2="340" y2="112" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+      <text x="316" y="108" font-size="14" fill="#ffffff" font-weight="700">&#937;<tspan font-size="10" dy="3">L2</tspan></text>
+      <line x1="350" y1="118" x2="350" y2="144" stroke="#c8a415" stroke-width="1.8" marker-end="url(#arrowBeamA)" opacity="0.7"/>
+      <line x1="350" y1="148" x2="388" y2="118" stroke="#3399dd" stroke-width="1.8" marker-end="url(#arrowScatA)" opacity="0.8"/>
+      <!-- Phase function label — below/right of leaf -->
+      <text x="370" y="168" font-size="11" fill="#3399dd" font-weight="700" font-style="italic">&#947;<tspan font-size="8" font-style="normal" dy="2">L2</tspan></text>
+
+      <!-- Leaf 3 -->
+      <g transform="translate(280,195) rotate(-50)">
+        <ellipse cx="0" cy="0" rx="18" ry="7" fill="#3d8e3d" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-8" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10" dy="2">3</tspan></text>
+      </g>
+      <line x1="280" y1="195" x2="256" y2="163" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+
+      <!-- Leaf 4 -->
+      <g transform="translate(400,185) rotate(40)">
+        <ellipse cx="0" cy="0" rx="19" ry="7" fill="#4a9e4a" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-8" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10" dy="2">4</tspan></text>
+      </g>
+      <line x1="400" y1="185" x2="418" y2="150" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+
+      <!-- Leaf 5 -->
+      <g transform="translate(310,240) rotate(-10)">
+        <ellipse cx="0" cy="0" rx="21" ry="7" fill="#5aad5a" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-8" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10" dy="2">5</tspan></text>
+      </g>
+      <line x1="310" y1="240" x2="306" y2="210" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+
+      <!-- Leaf 6 -->
+      <g transform="translate(370,265) rotate(-35)">
+        <ellipse cx="0" cy="0" rx="17" ry="6" fill="#3d8e3d" fill-opacity="0.85" stroke="#2d6e2d" stroke-width="0.8"/>
+      </g>
+
+      <!-- Leaf 7 -->
+      <g transform="translate(235,268) rotate(28)">
+        <ellipse cx="0" cy="0" rx="16" ry="6" fill="#4a9e4a" fill-opacity="0.7" stroke="#2d6e2d" stroke-width="0.8"/>
+      </g>
+
+      <!-- Dots + N label -->
+      <text x="415" y="255" font-size="22" fill="rgba(255,255,255,0.7)" font-weight="700">&#8942;</text>
+      <text x="215" y="225" font-size="17" fill="rgba(255,255,255,0.7)" font-weight="700"><tspan font-style="italic">N</tspan> leaves</text>
+
+      <!-- Leaf N with scattering (transmission) -->
+      <g transform="translate(330,288) rotate(5)">
+        <ellipse cx="0" cy="0" rx="19" ry="7" fill="#5aad5a" fill-opacity="0.8" stroke="#2d6e2d" stroke-width="0.8"/>
+        <text x="-10" y="5" font-size="13" fill="#fff" font-weight="700"><tspan font-style="italic">s</tspan><tspan font-size="10">N</tspan></text>
+      </g>
+      <line x1="330" y1="288" x2="326" y2="258" stroke="#ffffff" stroke-width="1.5" marker-end="url(#arrowNormA)" stroke-dasharray="3,2"/>
+      <text x="302" y="256" font-size="14" fill="#ffffff" font-weight="700">&#937;<tspan font-size="10" dy="3">LN</tspan></text>
+      <!-- Ω′ arriving at leaf N -->
+      <line x1="330" y1="258" x2="330" y2="284" stroke="#c8a415" stroke-width="1.8" marker-end="url(#arrowBeamA)" opacity="0.7"/>
+      <!-- Ω transmitted through leaf N -->
+      <line x1="330" y1="292" x2="338" y2="318" stroke="#3399dd" stroke-width="1.8" marker-end="url(#arrowScatA)" opacity="0.8"/>
+      <!-- Phase function label — to the left of leaf -->
+      <text x="296" y="298" font-size="11" fill="#3399dd" font-weight="700" font-style="italic">&#947;<tspan font-size="8" font-style="normal" dy="2">LN</tspan></text>
+
+      <!-- Shadow plane -->
+      <ellipse cx="315" cy="385" rx="130" ry="38" fill="url(#shadowPlaneA)" stroke="#a07840" stroke-width="1" stroke-dasharray="4,3"/>
+      <g opacity="0.55">
+        <ellipse cx="275" cy="378" rx="12" ry="4" fill="#704a1e" transform="rotate(-20,275,378)"/>
+        <ellipse cx="310" cy="385" rx="10" ry="5" fill="#704a1e" transform="rotate(10,310,385)"/>
+        <ellipse cx="345" cy="375" rx="13" ry="4" fill="#704a1e" transform="rotate(-30,345,375)"/>
+        <ellipse cx="290" cy="392" rx="11" ry="4" fill="#704a1e" transform="rotate(25,290,392)"/>
+        <ellipse cx="335" cy="395" rx="9" ry="4" fill="#704a1e" transform="rotate(-5,335,395)"/>
+        <ellipse cx="360" cy="390" rx="10" ry="3" fill="#704a1e" transform="rotate(-40,360,390)"/>
+        <ellipse cx="255" cy="390" rx="11" ry="4" fill="#704a1e" transform="rotate(15,255,390)"/>
+      </g>
+      <text x="315" y="435" font-size="14" fill="#5a3a10" text-anchor="middle" font-weight="700">Shadow plane &#8869; &#937;&#8242;</text>
+
+      <!-- Volume labels -->
+      <text x="188" y="322" font-size="15" fill="#222" font-weight="600">d&#958;</text>
+      <text x="455" y="200" font-size="13" fill="#222" font-weight="600">&#916;V = dS&#183;d&#958;</text>
+
+      <!-- Annotation box: scattering sum -->
+      <g transform="translate(8,100)">
+        <rect x="0" y="0" width="168" height="122" rx="4" fill="#ffffff" stroke="#2c5f2d" stroke-width="1.2"/>
+        <text x="84" y="19" text-anchor="middle" font-size="13" fill="#1a1a1a" font-weight="700">Sum each interaction:</text>
+        <text x="84" y="40" text-anchor="middle" font-size="11" fill="#1a1a1a" font-weight="700">
+          <tspan font-style="italic">s</tspan><tspan font-size="8">1</tspan>|&#937;<tspan font-size="7" dy="2">L1</tspan><tspan dy="-2">&#183;&#937;&#8242;|</tspan>
+          <tspan font-style="italic">&#947;</tspan><tspan font-size="7" dy="2">L1</tspan><tspan dy="-2">(&#937;&#8242;&#8594;&#937;)d&#937; +</tspan>
+        </text>
+        <text x="84" y="58" text-anchor="middle" font-size="11" fill="#1a1a1a" font-weight="700">
+          <tspan font-style="italic">s</tspan><tspan font-size="8">2</tspan>|&#937;<tspan font-size="7" dy="2">L2</tspan><tspan dy="-2">&#183;&#937;&#8242;|</tspan>
+          <tspan font-style="italic">&#947;</tspan><tspan font-size="7" dy="2">L2</tspan><tspan dy="-2">(&#937;&#8242;&#8594;&#937;)d&#937; +</tspan>
+        </text>
+        <text x="84" y="76" text-anchor="middle" font-size="14" fill="#1a1a1a" font-weight="700">&#8230;</text>
+        <text x="84" y="94" text-anchor="middle" font-size="11" fill="#1a1a1a" font-weight="700">
+          <tspan font-style="italic">s</tspan><tspan font-size="8">N</tspan>|&#937;<tspan font-size="7" dy="2">LN</tspan><tspan dy="-2">&#183;&#937;&#8242;|</tspan>
+          <tspan font-style="italic">&#947;</tspan><tspan font-size="7" dy="2">LN</tspan><tspan dy="-2">(&#937;&#8242;&#8594;&#937;)d&#937;</tspan>
+        </text>
+        <text x="84" y="114" text-anchor="middle" font-size="12" fill="#555" font-weight="600">one term per leaf</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Equation bar with stacked sigma -->
+  <div class="equation-bar">
+    <div class="eq-text">
+      &#963;<sub>s</sub> d&#958; d<b>&#937;</b> =
+      <span class="sigma-inline highlight-green">
+        <span class="sigma-top"><em>N</em></span>
+        <span class="sigma-sym">&#931;</span>
+        <span class="sigma-bot"><em>i</em>=1</span>
+      </span>
+      <em>s</em><sub><em>i</em></sub>
+      |<b>&#937;</b><sub>L<em>i</em></sub>
+      &#183; <b>&#937;</b>&#8242;|
+      &#947;<sub>L<em>i</em></sub>(<b>&#937;</b>&#8242;&#8594;<b>&#937;</b>)
+      d<b>&#937;</b> &#8725; dS
+    </div>
+  </div>
+</div>
+
+<!-- ====================== RIGHT PANEL ====================== -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">Sum over <em>M</em> Solid Angle Bins</div>
+  </div>
+  <div class="panel-body">
+    <svg viewBox="0 0 520 470" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowNormB" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+          <path d="M0,0 L7,2.5 L0,5 Z" fill="#065a82"/>
+        </marker>
+        <radialGradient id="hemiFill" cx="35%" cy="30%" r="65%" fx="30%" fy="25%">
+          <stop offset="0%" stop-color="#d0e8f5" stop-opacity="0.50"/>
+          <stop offset="50%" stop-color="#a3cde2" stop-opacity="0.30"/>
+          <stop offset="100%" stop-color="#6a9ab8" stop-opacity="0.18"/>
+        </radialGradient>
+        <radialGradient id="hemiHighlight" cx="30%" cy="25%" r="35%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.45"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="hemiEdge" cx="50%" cy="50%" r="50%">
+          <stop offset="60%" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#3a6a8a" stop-opacity="0.15"/>
+        </radialGradient>
+        <radialGradient id="baseDisc" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#c8dce8" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="#8aafca" stop-opacity="0.12"/>
+        </radialGradient>
+      </defs>
+
+      <!-- ===== HEMISPHERE ===== -->
+      <ellipse cx="264" cy="282" rx="185" ry="56" fill="#000" fill-opacity="0.04"/>
+      <ellipse cx="260" cy="275" rx="180" ry="54" fill="url(#baseDisc)" stroke="#7eaec8" stroke-width="1.0"/>
+      <path d="M80,275 Q80,275 260,329 Q440,275 440,275" fill="none" stroke="#7eaec8" stroke-width="0.8" stroke-dasharray="5,3" opacity="0.5"/>
+      <path d="M80,275 Q80,95 260,75 Q440,95 440,275 Z" fill="url(#hemiFill)"/>
+      <path d="M80,275 Q80,95 260,75 Q440,95 440,275 Z" fill="url(#hemiHighlight)"/>
+      <path d="M80,275 Q80,95 260,75 Q440,95 440,275 Z" fill="url(#hemiEdge)"/>
+      <path d="M80,275 Q80,95 260,75 Q440,95 440,275" fill="none" stroke="#4a7fa0" stroke-width="1.8"/>
+      <path d="M80,275 Q80,275 260,221 Q440,275 440,275" fill="none" stroke="#7eaec8" stroke-width="1.0" opacity="0.6"/>
+
+      <!-- Latitude grid -->
+      <path d="M115,225 Q115,155 260,138 Q405,155 405,225" fill="none" stroke="#4a7fa0" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.35"/>
+      <path d="M148,185 Q148,128 260,112 Q372,128 372,185" fill="none" stroke="#4a7fa0" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.35"/>
+
+      <!-- Longitude grid -->
+      <path d="M260,75 L260,275" stroke="#4a7fa0" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.3"/>
+      <path d="M260,75 Q182,118 152,275" stroke="#4a7fa0" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.25"/>
+      <path d="M260,75 Q338,118 368,275" stroke="#4a7fa0" stroke-width="0.7" stroke-dasharray="4,4" opacity="0.25"/>
+
+      <!-- Bin 1: near zenith -->
+      <path d="M238,84 Q260,76 282,84 Q280,98 260,103 Q240,98 238,84 Z"
+            fill="#065a82" fill-opacity="0.55" stroke="#043d5c" stroke-width="1.3"/>
+      <text x="260" y="97" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">L1</tspan></text>
+
+      <!-- Bin 2 -->
+      <path d="M160,155 Q182,130 215,136 Q208,160 186,170 Q164,167 160,155 Z"
+            fill="#1c7293" fill-opacity="0.55" stroke="#135a74" stroke-width="1.3"/>
+      <text x="186" y="157" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">L2</tspan></text>
+
+      <!-- Bin 3 -->
+      <path d="M312,133 Q334,125 358,142 Q350,164 328,167 Q310,160 312,133 Z"
+            fill="#028090" fill-opacity="0.55" stroke="#026272" stroke-width="1.3"/>
+      <text x="332" y="154" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">L3</tspan></text>
+
+      <!-- Bin 4 -->
+      <path d="M114,213 Q125,193 156,191 Q160,215 142,228 Q118,225 114,213 Z"
+            fill="#00a896" fill-opacity="0.50" stroke="#008070" stroke-width="1.2"/>
+      <text x="138" y="216" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">L4</tspan></text>
+
+      <!-- Bin 5 -->
+      <path d="M202,180 Q224,167 250,175 Q248,200 226,210 Q204,202 202,180 Z"
+            fill="#065a82" fill-opacity="0.45" stroke="#043d5c" stroke-width="1"/>
+      <text x="225" y="196" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">L5</tspan></text>
+
+      <!-- Bin 6 (dots) -->
+      <path d="M268,178 Q290,167 316,178 Q313,202 292,210 Q270,202 268,178 Z"
+            fill="#1c7293" fill-opacity="0.40" stroke="#135a74" stroke-width="1"/>
+      <text x="292" y="198" text-anchor="middle" font-size="16" fill="#fff" font-weight="700">&#8943;</text>
+
+      <!-- Bin M -->
+      <path d="M365,200 Q388,192 410,210 Q402,232 380,238 Q362,228 365,200 Z"
+            fill="#028090" fill-opacity="0.50" stroke="#026272" stroke-width="1.2"/>
+      <text x="385" y="223" text-anchor="middle" font-size="12" fill="#fff" font-weight="700">&#937;<tspan font-size="9">LM</tspan></text>
+
+      <!-- Normal arrows from center to bins -->
+      <line x1="260" y1="275" x2="260" y2="100" stroke="#065a82" stroke-width="1.6" marker-end="url(#arrowNormB)"/>
+      <line x1="260" y1="275" x2="184" y2="160" stroke="#1c7293" stroke-width="1.4" marker-end="url(#arrowNormB)"/>
+      <line x1="260" y1="275" x2="332" y2="150" stroke="#028090" stroke-width="1.4" marker-end="url(#arrowNormB)"/>
+      <line x1="260" y1="275" x2="138" y2="213" stroke="#00a896" stroke-width="1.3" marker-end="url(#arrowNormB)" opacity="0.85"/>
+      <line x1="260" y1="275" x2="385" y2="218" stroke="#028090" stroke-width="1.3" marker-end="url(#arrowNormB)" opacity="0.85"/>
+
+      <circle cx="260" cy="275" r="4" fill="#065a82"/>
+
+      <text x="260" y="300" text-anchor="middle" font-size="15" fill="#222" font-weight="600">
+        <tspan font-style="italic">M</tspan> solid angle bins tile the hemisphere
+      </text>
+
+      <!-- Callout box -->
+      <g transform="translate(390,42)">
+        <rect x="0" y="0" width="126" height="84" rx="4" fill="#ffffff" stroke="#065a82" stroke-width="1.2"/>
+        <text x="63" y="18" text-anchor="middle" font-size="12" fill="#1a1a1a" font-weight="700">Bin &#937;<tspan font-size="9">L1</tspan> collects</text>
+        <text x="63" y="34" text-anchor="middle" font-size="12" fill="#1a1a1a" font-weight="700">all leaves with</text>
+        <text x="63" y="50" text-anchor="middle" font-size="12" fill="#1a1a1a" font-weight="700">normals near &#937;<tspan font-size="9">L1</tspan></text>
+        <text x="63" y="66" text-anchor="middle" font-size="11" fill="#065a82" font-weight="700">each with its &#947;<tspan font-size="8" dy="1">Li</tspan></text>
+        <g transform="translate(14,68)">
+          <ellipse cx="0" cy="0" rx="8" ry="3" fill="#4a9e4a" stroke="#2d6e2d" stroke-width="0.5" transform="rotate(-15)"/>
+          <ellipse cx="22" cy="2" rx="7" ry="3" fill="#5aad5a" stroke="#2d6e2d" stroke-width="0.5" transform="rotate(10)"/>
+          <ellipse cx="44" cy="-1" rx="8" ry="3" fill="#3d8e3d" stroke="#2d6e2d" stroke-width="0.5" transform="rotate(-25)"/>
+          <ellipse cx="66" cy="1" rx="7" ry="3" fill="#4a9e4a" stroke="#2d6e2d" stroke-width="0.5" transform="rotate(5)"/>
+        </g>
+      </g>
+      <line x1="390" y1="86" x2="282" y2="90" stroke="#666" stroke-width="0.8" stroke-dasharray="3,2"/>
+
+      <!-- Key Idea box -->
+      <g transform="translate(10,316)">
+        <rect x="0" y="0" width="240" height="148" rx="4" fill="#ffffff" stroke="#065a82" stroke-width="1"/>
+        <text x="120" y="22" text-anchor="middle" font-size="15" fill="#065a82" font-weight="700">Key Idea</text>
+        <text x="120" y="42" text-anchor="middle" font-size="13" fill="#1a1a1a">Instead of counting <tspan font-style="italic">N</tspan> individual</text>
+        <text x="120" y="58" text-anchor="middle" font-size="13" fill="#1a1a1a">leaves, group by orientation into</text>
+        <text x="120" y="74" text-anchor="middle" font-size="13" fill="#1a1a1a"><tspan font-style="italic">M</tspan> bins. Replace <tspan font-style="italic">s</tspan><tspan font-size="10">i</tspan> with pdf <tspan font-style="italic">g</tspan><tspan font-size="10">L</tspan>.</text>
+        <text x="120" y="94" text-anchor="middle" font-size="13" fill="#1a1a1a">The leaf phase functions <tspan font-style="italic">&#947;</tspan><tspan font-size="10">Li</tspan></text>
+        <text x="120" y="110" text-anchor="middle" font-size="13" fill="#1a1a1a">integrate into the <tspan fill="#065a82" font-weight="700">area scattering</tspan></text>
+        <text x="120" y="126" text-anchor="middle" font-size="13" fill="#1a1a1a"><tspan fill="#065a82" font-weight="700">phase function</tspan> (1/&#960;)&#915;(&#937;&#8242;&#8594;&#937;)</text>
+        <text x="120" y="142" text-anchor="middle" font-size="12" fill="#555" font-style="italic">(Ross, 1981)</text>
+      </g>
+
+      <!-- Transition box -->
+      <g transform="translate(262,316)">
+        <rect x="0" y="0" width="248" height="148" rx="4" fill="#ffffff" stroke="#065a82" stroke-width="1"/>
+        <text x="124" y="22" text-anchor="middle" font-size="15" fill="#1a1a1a" font-weight="700">Discrete &#8594; Continuous</text>
+
+        <!-- Stacked Sigma -->
+        <text x="42" y="46" font-size="12" fill="#065a82" font-weight="700" text-anchor="middle" font-style="italic">N</text>
+        <text x="42" y="66" font-size="30" fill="#065a82" text-anchor="middle">&#931;</text>
+        <text x="42" y="82" font-size="11" fill="#065a82" text-anchor="middle" font-style="italic">i=1</text>
+
+        <text x="78" y="66" font-size="22" fill="#1a1a1a" text-anchor="middle">&#8594;</text>
+
+        <!-- Stacked Integral -->
+        <text x="112" y="66" font-size="30" fill="#065a82" text-anchor="middle">&#8747;</text>
+        <text x="112" y="82" font-size="11" fill="#065a82" text-anchor="middle" font-weight="600">2&#960;</text>
+
+        <text x="142" y="66" font-size="15" fill="#065a82" text-anchor="start">d<tspan font-weight="700">&#937;</tspan><tspan font-size="11">L</tspan></text>
+
+        <text x="124" y="103" text-anchor="middle" font-size="13" fill="#1a1a1a">
+          <tspan font-style="italic">s</tspan><tspan font-size="10">i</tspan>/<tspan font-style="italic">S</tspan><tspan font-size="10">o</tspan>
+          &#8594; (1/2&#960;) <tspan font-style="italic">g</tspan><tspan font-size="10">L</tspan>(&#937;<tspan font-size="10">L</tspan>) d&#937;<tspan font-size="10">L</tspan>
+        </text>
+
+        <text x="124" y="123" text-anchor="middle" font-size="13" fill="#1a1a1a">
+          <tspan font-style="italic">&#947;</tspan><tspan font-size="10">Li</tspan>
+          &#8594; <tspan font-style="italic">&#947;</tspan><tspan font-size="10">L</tspan>(&#937;&#8242;&#8594;&#937;; &#937;<tspan font-size="10">L</tspan>)
+        </text>
+
+        <!-- Result -->
+        <rect x="14" y="131" width="220" height="14" rx="2" fill="#065a82" fill-opacity="0.08"/>
+        <text x="124" y="142" text-anchor="middle" font-size="13" fill="#065a82" font-weight="700">
+          &#963;<tspan font-size="10">s</tspan> = <tspan font-style="italic">u</tspan><tspan font-size="10">L</tspan> &#183; (1/&#960;) &#915;(<tspan font-weight="700">&#937;</tspan>&#8242;&#8594;<tspan font-weight="700">&#937;</tspan>)
+        </text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Equation bar -->
+  <div class="equation-bar">
+    <div class="eq-text">
+      &#963;<sub>s</sub>(<b>&#937;</b>&#8242;&#8594;<b>&#937;</b>) =
+      <em>u</em><sub>L</sub>
+      &#183; <sup>1</sup>&#8725;<sub>&#960;</sub>
+      &#915;(<b><em>r</em></b>;
+      <b>&#937;</b>&#8242; &#8594; <b>&#937;</b>)
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- CAPTION -->
+<div class="caption-box">
+  <div class="caption-label">Figure Caption</div>
+  <div class="caption-text">
+    <strong>Two equivalent ways to compute the differential scattering coefficient &#963;<sub>s</sub>
+    of a vegetation canopy modeled as a turbid medium.</strong>
+    <span class="green">Left panel</span> shows the direct approach: each of the <em>N</em> leaf elements
+    (areas <em>s</em><sub>1</sub>, <em>s</em><sub>2</sub>, &#8230;, <em>s</em><sub>N</sub>) in the elementary volume
+    is individually illuminated along the incident direction <b>&#937;</b>&#8242;.
+    Each leaf <em>i</em> with normal <b>&#937;</b><sub>L<em>i</em></sub> contributes a projected area
+    <em>s</em><sub><em>i</em></sub> |<b>&#937;</b><sub>L<em>i</em></sub> &#183; <b>&#937;</b>&#8242;|
+    weighted by its individual scattering phase function
+    &#947;<sub>L<em>i</em></sub>(<b>&#937;</b>&#8242; &#8594; <b>&#937;</b>; <b>&#937;</b><sub>L<em>i</em></sub>) d<b>&#937;</b>,
+    which describes the angular redistribution into a differential solid angle
+    about the scattered direction <b>&#937;</b>.
+    This is exact but impractical when <em>N</em> is large.
+    <span class="blue">Right panel</span> shows the efficient alternative: the upper hemisphere of
+    leaf normal directions is partitioned into <em>M</em> solid angle bins.
+    Replacing the individual leaf areas with the leaf angle pdf
+    <em>g</em><sub>L</sub>(<b>&#937;</b><sub>L</sub>) converts the discrete sum into a continuous integral
+    over the hemisphere, absorbing the individual phase functions &#947;<sub>L<em>i</em></sub>
+    into the <strong>area scattering phase function</strong>
+    (1/&#960;) &#915;(<b>&#937;</b>&#8242; &#8594; <b>&#937;</b>).
+    This yields the differential scattering coefficient
+    &#963;<sub>s</sub> = <em>u</em><sub>L</sub> &#183; (1/&#960;) &#915;,
+    where <em>u</em><sub>L</sub> is the leaf area density (Ross, 1981).
+  </div>
+</div>
+
+</div>
+</body>
+</html>
